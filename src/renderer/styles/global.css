@@ -1,0 +1,102 @@
+/* ──────────────────────────────────────────────────────────────
+   Global – base reset, theme variables, app chrome
+────────────────────────────────────────────────────────────── */
+
+/* Default theme variables (Midnight) — overridden by applyTheme() */
+:root {
+  --bg: #0d0d14;
+  --bg-secondary: #13131e;
+  --surface: #1a1a28;
+  --surface-hover: #22223a;
+  --border: #2a2a42;
+  --text: #e2e2f0;
+  --text-muted: #7878a8;
+  --accent: #7c6af7;
+  --accent-dim: #4a3fbe;
+  --danger: #f87171;
+  --tab-active-bg: #1a1a28;
+  --tab-inactive-bg: #0d0d14;
+  --scrollbar: #2a2a42;
+  --radius: 8px;
+
+  /* Fixed layout measures */
+  --titlebar-height: 44px;
+  --tabbar-height: 40px;
+  --ai-panel-width: 360px;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Selection */
+::selection {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  font-family: var(--font-ui);
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input, textarea {
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  padding: 6px 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input:focus, textarea:focus {
+  border-color: var(--accent);
+}
+
+/* Transition helper */
+.fade-in {
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

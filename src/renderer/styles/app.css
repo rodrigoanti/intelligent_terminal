@@ -1,0 +1,151 @@
+/* ── App layout ─────────────────────────────────────────────── */
+
+.app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Title bar ────────────────────────────────────────────────── */
+
+.titlebar {
+  height: var(--titlebar-height);
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+  padding: 0 12px;
+  gap: 8px;
+}
+
+.titlebar-drag {
+  flex: 1;
+  /* space for macOS traffic lights (approx 80px) */
+  padding-left: 72px;
+}
+
+.titlebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.theme-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 200px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) / 2);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  outline: none;
+  transition: color 0.15s, background 0.15s;
+}
+
+.theme-picker-trigger:hover,
+.theme-picker-trigger:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.theme-picker-trigger-swatch {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+.theme-picker-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: calc(var(--radius) / 2);
+  color: var(--text-muted);
+  font-size: 12px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.icon-btn.active {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.font-size-btn {
+  padding: 4px 7px;
+}
+
+.font-size-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.font-size-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* ── Main area ────────────────────────────────────────────────── */
+
+.main-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.terminals-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.tab-terminal-group {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tab-terminal-group--active {
+  display: flex;
+}
+
+.tab-terminal-pane-cell {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-terminal-pane-cell:not(:first-child) {
+  border-left: 1px solid var(--border);
+}

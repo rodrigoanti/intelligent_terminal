@@ -1,0 +1,1019 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import { SerializeAddon } from '@xterm/addon-serialize'
+import { getTheme } from '@themes/presets'
+import type { AppConfig } from '@shared/configSchema'
+import { CONFIG_DEFAULTS } from '@shared/configSchema'
+import { feedCompletedUserLines } from '@renderer/history/feedCompletedUserLines'
+import { stripLeadingShellPrompts } from '@renderer/terminal/stripShellPromptPrefix'
+import { AiPanel } from '@renderer/components/AiPanel'
+import { ConfirmTerminalModal } from '@renderer/components/ConfirmTerminalModal'
+import '@xterm/xterm/css/xterm.css'
+import './TerminalPane.css'
+
+function shellSingleQuotePosix(path: string): string {
+  return `'${path.replace(/'/g, `'\\''`)}'`
+}
+
+function isCdStart(draft: string): boolean {
+  return /^cd(\s|$)/i.test(draft.trimStart())
+}
+
+function filterPaths(paths: string[], draft: string): string[] {
+  const arg = draft.trimStart().replace(/^cd\s*/i, '')
+  if (!arg) return paths
+  const lower = arg.toLowerCase()
+  return paths.filter(p => p.toLowerCase().includes(lower))
+}
+
+// ── Sugerencias de comandos ────────────────────────────────────────────────
+
+interface CmdSnippet { label: string; cmd: string }
+
+const CMD_SNIPPETS: Record<string, CmdSnippet[]> = {
+  git: [
+    { label: 'git status',              cmd: 'git status' },
+    { label: 'git add .',               cmd: 'git add .' },
+    { label: 'git commit -m ""',        cmd: 'git commit -m ""' },
+    { label: 'git push',                cmd: 'git push' },
+    { label: 'git pull',                cmd: 'git pull' },
+    { label: 'git log --oneline',       cmd: 'git log --oneline' },
+    { label: 'git diff',                cmd: 'git diff' },
+    { label: 'git checkout -b',         cmd: 'git checkout -b ' },
+    { label: 'git stash',               cmd: 'git stash' },
+    { label: 'git merge',               cmd: 'git merge ' },
+  ],
+  npm: [
+    { label: 'npm install',             cmd: 'npm install' },
+    { label: 'npm run dev',             cmd: 'npm run dev' },
+    { label: 'npm run build',           cmd: 'npm run build' },
+    { label: 'npm run test',            cmd: 'npm run test' },
+    { label: 'npm install -D',          cmd: 'npm install --save-dev ' },
+    { label: 'npm uninstall',           cmd: 'npm uninstall ' },
+    { label: 'npm list',                cmd: 'npm list' },
+    { label: 'npm outdated',            cmd: 'npm outdated' },
+    { label: 'npm update',              cmd: 'npm update' },
+    { label: 'npm init -y',             cmd: 'npm init -y' },
+  ],
+  pnpm: [
+    { label: 'pnpm install',            cmd: 'pnpm install' },
+    { label: 'pnpm run dev',            cmd: 'pnpm run dev' },
+    { label: 'pnpm run build',          cmd: 'pnpm run build' },
+    { label: 'pnpm run test',           cmd: 'pnpm run test' },
+    { label: 'pnpm add -D',             cmd: 'pnpm add -D ' },
+    { label: 'pnpm remove',             cmd: 'pnpm remove ' },
+    { label: 'pnpm list',               cmd: 'pnpm list' },
+    { label: 'pnpm outdated',           cmd: 'pnpm outdated' },
+    { label: 'pnpm update',             cmd: 'pnpm update' },
+    { label: 'pnpm init',               cmd: 'pnpm init' },
+  ],
+  docker: [
+    { label: 'docker ps',               cmd: 'docker ps' },
+    { label: 'docker ps -a',            cmd: 'docker ps -a' },
+    { label: 'docker build -t',         cmd: 'docker build -t ' },
+    { label: 'docker run -it',          cmd: 'docker run -it ' },
+    { label: 'docker stop',             cmd: 'docker stop ' },
+    { label: 'docker rm',               cmd: 'docker rm ' },
+    { label: 'docker images',           cmd: 'docker images' },
+    { label: 'docker pull',             cmd: 'docker pull ' },
+    { label: 'docker logs -f',          cmd: 'docker logs -f ' },
+    { label: 'docker exec -it',         cmd: 'docker exec -it ' },
+  ],
+  ssh: [
+    { label: 'ssh user@host',           cmd: 'ssh user@' },
+    { label: 'ssh -p 22',               cmd: 'ssh -p 22 user@' },
+    { label: 'ssh -i key.pem',          cmd: 'ssh -i ~/.ssh/id_rsa user@' },
+    { label: 'ssh-keygen -t ed25519',   cmd: 'ssh-keygen -t ed25519' },
+    { label: 'ssh-copy-id',             cmd: 'ssh-copy-id user@' },
+  ],
+  grep: [
+    { label: 'grep -r "" .',            cmd: 'grep -r "" .' },
+    { label: 'grep -ri "" .',           cmd: 'grep -ri "" .' },
+    { label: 'grep -n "" file',         cmd: 'grep -n ""  ' },
+    { label: 'grep -l "" .',            cmd: 'grep -l "" .' },
+    { label: 'grep -v ""',              cmd: 'grep -v "" ' },
+  ],
+  find: [
+    { label: 'find . -name',            cmd: 'find . -name "" ' },
+    { label: 'find . -type f',          cmd: 'find . -type f' },
+    { label: 'find . -type d',          cmd: 'find . -type d' },
+    { label: 'find . -mtime -1',        cmd: 'find . -mtime -1' },
+    { label: 'find . -name "*.ts"',     cmd: 'find . -name "*.ts"' },
+  ],
+  curl: [
+    { label: 'curl -X GET',             cmd: 'curl -X GET ' },
+    { label: 'curl -X POST -d',         cmd: 'curl -X POST -H "Content-Type: application/json" -d \'{}\' ' },
+    { label: 'curl -o file',            cmd: 'curl -o output ' },
+    { label: 'curl -L -O',              cmd: 'curl -L -O ' },
+    { label: 'curl -s | jq',            cmd: 'curl -s  | jq .' },
+  ],
+  tar: [
+    { label: 'tar -czf file.tar.gz',    cmd: 'tar -czf output.tar.gz ' },
+    { label: 'tar -xzf file.tar.gz',    cmd: 'tar -xzf ' },
+    { label: 'tar -tzf file.tar.gz',    cmd: 'tar -tzf ' },
+    { label: 'tar -xjf file.tar.bz2',   cmd: 'tar -xjf ' },
+    { label: 'tar -czf - | ssh',        cmd: 'tar -czf - . | ssh user@host "cat > backup.tar.gz"' },
+  ],
+  python: [
+    { label: 'python -m venv venv',     cmd: 'python -m venv venv' },
+    { label: 'python -m pip install',   cmd: 'python -m pip install ' },
+    { label: 'python -c ""',            cmd: 'python -c ""' },
+    { label: 'python -m http.server',   cmd: 'python -m http.server 8080' },
+    { label: 'python -m pytest',        cmd: 'python -m pytest' },
+  ],
+  node: [
+    { label: 'node -e ""',              cmd: 'node -e ""' },
+    { label: 'node --inspect',          cmd: 'node --inspect ' },
+    { label: 'node -r dotenv/config',   cmd: 'node -r dotenv/config ' },
+    { label: 'node --version',          cmd: 'node --version' },
+    { label: 'node -p ""',              cmd: 'node -p ""' },
+  ],
+}
+
+const CMD_SNIPPET_KEYS = Object.keys(CMD_SNIPPETS)
+
+function getMatchedCmd(trimmedDraft: string): string | null {
+  for (const cmd of CMD_SNIPPET_KEYS) {
+    if (new RegExp(`^${cmd}(\\s|$)`, 'i').test(trimmedDraft)) return cmd
+  }
+  return null
+}
+
+/**
+ * Filtra snippets del comando activo por prefijo de la línea completa que el usuario escribió
+ * (insensible a mayúsculas). Así `npm run dev` no muestra `npm run build` ni `npm run test`.
+ */
+function filterCmdSnippetsByDraft(all: CmdSnippet[], trimmedDraft: string): CmdSnippet[] {
+  const d = trimmedDraft.trimStart().toLowerCase()
+  if (!d) return all
+  return all.filter(
+    s =>
+      s.cmd.toLowerCase().startsWith(d) ||
+      s.label.toLowerCase().startsWith(d),
+  )
+}
+
+const MAX_RECENT_COMMANDS = 120
+const MAX_VISIBLE_RECENT_MATCHES = 5
+
+/** MRU sin duplicados exactos (tras trim); el más reciente queda primero. */
+function pushRecentUnique(prev: string[], line: string, max: number): string[] {
+  const t = line.trim()
+  if (!t) return prev
+  return [t, ...prev.filter(x => x !== t)].slice(0, max)
+}
+
+/**
+ * Historial de líneas ejecutadas (MRU), filtrado solo por si el borrador aparece en la línea.
+ * Independiente de CMD_SNIPPETS. No lista `cd` (va al panel de carpetas).
+ */
+function filterExecutedRecentsByDraft(recent: string[], draft: string, limit: number): string[] {
+  const d = draft.trimStart()
+  if (!d || isCdStart(d)) return []
+  const dl = d.toLowerCase()
+  const out: string[] = []
+  for (const c of recent) {
+    const t = c.trim()
+    if (!t || isCdStart(t)) continue
+    if (!t.toLowerCase().includes(dl)) continue
+    out.push(c)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+interface CmdSuggestHighlightParts {
+  before: string
+  match: string
+  after: string
+}
+
+/**
+ * Parte el texto mostrado para resaltar el borrador: prefijo común (insensible
+ * a mayúsculas) o, si no hay, primera aparición del borrador (caso recientes con includes).
+ */
+function splitCmdSuggestHighlight(display: string, draft: string): CmdSuggestHighlightParts | null {
+  const d = draft.trim()
+  if (!d) return null
+  const dl = d.toLowerCase()
+  const fl = display.toLowerCase()
+  let n = 0
+  while (
+    n < display.length &&
+    n < d.length &&
+    display[n].toLowerCase() === d[n].toLowerCase()
+  ) {
+    n++
+  }
+  if (n > 0) {
+    return { before: '', match: display.slice(0, n), after: display.slice(n) }
+  }
+  const i = fl.indexOf(dl)
+  if (i >= 0) {
+    const end = i + d.length
+    return { before: display.slice(0, i), match: display.slice(i, end), after: display.slice(end) }
+  }
+  return null
+}
+
+function CmdSuggestHighlightedLabel({ display, draft }: { display: string; draft: string }): React.ReactElement {
+  const parts = splitCmdSuggestHighlight(display, draft)
+  if (!parts) {
+    return <span className="cmd-suggest-label">{display}</span>
+  }
+  const { before, match, after } = parts
+  return (
+    <span className="cmd-suggest-label">
+      {before !== '' ? <span className="cmd-suggest-label__rest">{before}</span> : null}
+      <span className="cmd-suggest-label__typed">{match}</span>
+      {after !== '' ? <span className="cmd-suggest-label__rest">{after}</span> : null}
+    </span>
+  )
+}
+
+/**
+ * Ajusta columnas/filas al contenedor sin “saltar” el scroll: si el usuario estaba
+ * abajo del todo (prompt), se mantiene abajo; si había subido en el historial,
+ * se conserva la misma línea superior del viewport.
+ */
+function fitTerminalPreserveScroll(term: Terminal, fit: FitAddon): void {
+  const buf = term.buffer.active
+  if (buf.type !== 'normal') {
+    fit.fit()
+    return
+  }
+  const savedTop = buf.viewportY
+  const wasAtBottom = savedTop >= buf.baseY
+  fit.fit()
+  const b = term.buffer.active
+  if (b.type !== 'normal') return
+  if (wasAtBottom) {
+    term.scrollToBottom()
+    return
+  }
+  // b.baseY es el techo válido de viewportY. b.length-rows puede ser 0 tras resize
+  // cuando xterm recompacta el scrollback, forzando target=0 y saltando al inicio.
+  const target = Math.min(Math.max(0, savedTop), Math.max(0, b.baseY))
+  term.scrollToLine(target)
+}
+
+/**
+ * Escribe salida del PTY y, si el usuario iba pegado al fondo sin selección,
+ * fuerza el scroll al final usando el callback de term.write() en lugar de rAF.
+ */
+function writePtyDataWithFollowScroll(term: Terminal, data: string): void {
+  const buf = term.buffer.active
+  const wasFollowing =
+    buf.type === 'normal' &&
+    buf.viewportY >= buf.baseY &&
+    term.getSelection().length === 0
+  // xterm v5 procesa escrituras PTY con setTimeout(() => _innerWrite()), mientras
+  // que rAF se ejecuta ANTES que setTimeout en el event loop. Si usáramos rAF,
+  // scrollToBottom() dispararía cuando buf.baseY todavía tiene el valor anterior
+  // (la escritura no fue procesada aún) → el scroll apunta al fondo incorrecto.
+  // El callback de term.write() dispara desde dentro de _innerWrite(), justo
+  // después de que baseY se actualizó, garantizando que scrollToBottom() apunta
+  // al fondo real.
+  term.write(data, wasFollowing ? () => {
+    if (term.buffer.active.type !== 'normal') return
+    term.scrollToBottom()
+  } : undefined)
+}
+
+/**
+ * Extrae las últimas `maxLines` líneas del buffer visible de xterm.
+ * Usa `buf.baseY + term.rows` para obtener el total real de líneas escritas
+ * (evita contar líneas pre-asignadas vacías del scrollback).
+ */
+function getScrollback(term: Terminal, maxLines: number): string {
+  const buf = term.buffer.active
+  const total = buf.baseY + term.rows
+  const from = Math.max(0, total - maxLines)
+  const lines: string[] = []
+  for (let i = from; i < total; i++) {
+    const line = buf.getLine(i)
+    if (line) lines.push(line.translateToString(true))
+  }
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop()
+  return lines.join('\n')
+}
+
+export interface TerminalRef {
+  getSelection: () => string
+  writeToTty: (data: string) => void
+  /** Alterna panel IA expandido / solo barra con modelo */
+  toggleAi: () => void
+  /** Serializa el buffer completo (VT sequences) para persistencia */
+  serialize: () => string
+}
+
+export interface PaneToolbar {
+  onClosePane?: () => void
+}
+
+interface Props {
+  sessionId: string
+  /** Cada panel: chat IA expandido (lo persiste App en session.json) */
+  aiExpanded: boolean
+  onAiExpandedChange: (expanded: boolean) => void
+  /** La pestaña está seleccionada en la barra */
+  tabActive: boolean
+  /** Este panel tiene el foco dentro de la pestaña (clic o último split) */
+  isActivePane: boolean
+  /** cwd inicial al crear el PTY (solo panel nuevo al dividir) */
+  initialPtyCwd?: string
+  paneToolbar?: PaneToolbar
+  /** Otra terminal a la derecha (solo en el panel activo de la pestaña activa) */
+  onRequestSplitPane?: () => void
+  /** Al interactuar con este panel, selecciona pestaña y enfoca este split */
+  onRequestPaneFocus?: () => void
+  config: AppConfig
+  onTitleChange: (title: string) => void
+  onRegisterRef: (ref: TerminalRef | null) => void
+  /** Notifica si este panel tiene un proceso activo (true) o ha vuelto al prompt (false). */
+  onBusyChange?: (busy: boolean) => void
+}
+
+export const TerminalPane: React.FC<Props> = ({
+  sessionId,
+  aiExpanded,
+  onAiExpandedChange,
+  tabActive,
+  isActivePane,
+  initialPtyCwd,
+  paneToolbar,
+  onRequestSplitPane,
+  onRequestPaneFocus,
+  config,
+  onTitleChange,
+  onRegisterRef,
+  onBusyChange,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const fitRef = useRef<FitAddon | null>(null)
+  const serializeAddonRef = useRef<SerializeAddon | null>(null)
+  const userLineDraftRef = useRef('')
+  const absorbUserInputRef = useRef<(raw: string) => void>(() => {})
+  const ptyInjectRef = useRef<(raw: string) => void>(() => {})
+  const scrollbackSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const busySilenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isBusyRef = useRef(false)
+  const onBusyChangeRef = useRef(onBusyChange)
+  onBusyChangeRef.current = onBusyChange
+  const toggleAiRef = useRef<() => void>(() => {})
+  const configRef = useRef(config)
+  configRef.current = config
+
+  const [cdVisible, setCdVisible] = useState(false)
+  const [cdDraft, setCdDraft] = useState('')
+  const [cdPaths, setCdPaths] = useState<string[]>([])
+  const [cdLocalDirs, setCdLocalDirs] = useState<string[]>([])
+  const cdVisibleRef = useRef(false)
+
+  const [cmdSuggestCmd, setCmdSuggestCmd] = useState<string | null>(null)
+  const [cmdSuggestDraft, setCmdSuggestDraft] = useState('')
+  const [recentCommands, setRecentCommands] = useState<string[]>([])
+  const [cmdHistoryLoaded, setCmdHistoryLoaded] = useState(false)
+  const cmdHistoryLoadedRef = useRef(false)
+  const recentCommandsRef = useRef<string[]>([])
+  recentCommandsRef.current = recentCommands
+  const cmdHistorySaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [aiSelectedText, setAiSelectedText] = useState('')
+  const [confirmClosePaneOpen, setConfirmClosePaneOpen] = useState(false)
+
+  const isActivePaneRef = useRef(isActivePane)
+  isActivePaneRef.current = isActivePane
+
+  const onRequestPaneFocusRef = useRef(onRequestPaneFocus)
+  onRequestPaneFocusRef.current = onRequestPaneFocus
+
+  const loadCdPaths = useCallback(async (): Promise<void> => {
+    try {
+      const list = await window.api.getCdRecentList()
+      setCdPaths(list)
+    } catch { /* ignore */ }
+  }, [])
+
+  const loadCdLocalDirs = useCallback(async (): Promise<void> => {
+    try {
+      const dirs = await window.api.listCwdDirs(sessionId)
+      setCdLocalDirs(dirs)
+    } catch { /* ignore */ }
+  }, [sessionId])
+
+  useEffect(() => { void loadCdPaths() }, [loadCdPaths])
+
+  // Historial de comandos (mismo paneId que chat IA / scrollback): carga y guardado con debounce
+  useEffect(() => {
+    cmdHistoryLoadedRef.current = false
+    setRecentCommands([])
+    setCmdHistoryLoaded(false)
+    let cancelled = false
+    void window.api.loadCmdHistory(sessionId).then(lines => {
+      if (cancelled) return
+      setRecentCommands(lines.slice(0, MAX_RECENT_COMMANDS))
+      setCmdHistoryLoaded(true)
+      cmdHistoryLoadedRef.current = true
+    }).catch(() => {
+      if (cancelled) return
+      setRecentCommands([])
+      setCmdHistoryLoaded(true)
+      cmdHistoryLoadedRef.current = true
+    })
+    return () => {
+      cancelled = true
+      if (cmdHistorySaveTimerRef.current) {
+        clearTimeout(cmdHistorySaveTimerRef.current)
+        cmdHistorySaveTimerRef.current = null
+      }
+      if (cmdHistoryLoadedRef.current) {
+        window.api.saveCmdHistory(sessionId, recentCommandsRef.current)
+      }
+      cmdHistoryLoadedRef.current = false
+    }
+  }, [sessionId])
+
+  useEffect(() => {
+    if (!cmdHistoryLoaded) return
+    if (cmdHistorySaveTimerRef.current) clearTimeout(cmdHistorySaveTimerRef.current)
+    cmdHistorySaveTimerRef.current = setTimeout(() => {
+      cmdHistorySaveTimerRef.current = null
+      window.api.saveCmdHistory(sessionId, recentCommands)
+    }, 800)
+    return () => {
+      if (cmdHistorySaveTimerRef.current) {
+        clearTimeout(cmdHistorySaveTimerRef.current)
+        cmdHistorySaveTimerRef.current = null
+      }
+    }
+  }, [recentCommands, cmdHistoryLoaded, sessionId])
+
+  const toggleAi = useCallback(() => {
+    onRequestPaneFocusRef.current?.()
+    const next = !aiExpanded
+    if (next && termRef.current) setAiSelectedText(termRef.current.getSelection())
+    onAiExpandedChange(next)
+  }, [aiExpanded, onAiExpandedChange])
+
+  const expandAiFromBar = useCallback(() => {
+    onRequestPaneFocusRef.current?.()
+    if (termRef.current) setAiSelectedText(termRef.current.getSelection())
+    onAiExpandedChange(true)
+  }, [onAiExpandedChange])
+
+  // Called by AiPanel on each request to get fresh scrollback context
+  const getTerminalContext = useCallback((): string => {
+    if (!termRef.current) return ''
+    return getScrollback(termRef.current, configRef.current.maxContextLines)
+  }, [])
+
+  // Keep ref in sync so the effect below can expose it without re-running
+  toggleAiRef.current = toggleAi
+
+  /** IA: Ctrl+U + comando (misma ruta que teclear; limpia prompts copiados del modelo). */
+  const injectLineFromAi = useCallback((rawCmd: string) => {
+    onRequestPaneFocusRef.current?.()
+    const cmd = stripLeadingShellPrompts(rawCmd)
+    if (!cmd) return
+    ptyInjectRef.current('\x15' + cmd)
+    termRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    userLineDraftRef.current = ''
+
+    // Use configRef.current to get the LATEST config at mount time (avoids
+    // creating the terminal with CONFIG_DEFAULTS before getConfig() resolves)
+    const initialTheme = getTheme(configRef.current.themeId)
+    const term = new Terminal({
+      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() || 'monospace',
+      fontSize: configRef.current.fontSize,
+      lineHeight: 1.4,
+      cursorBlink: true,
+      cursorStyle: 'bar',
+      theme: initialTheme.xterm,
+      scrollback: 5000,
+      allowProposedApi: true,
+    })
+
+    const fit = new FitAddon()
+    const links = new WebLinksAddon()
+    const serialize = new SerializeAddon()
+    term.loadAddon(fit)
+    term.loadAddon(links)
+    term.loadAddon(serialize)
+    term.open(containerRef.current)
+    fitTerminalPreserveScroll(term, fit)
+
+    termRef.current = term
+    fitRef.current = fit
+    serializeAddonRef.current = serialize
+
+    // Cargar scrollback persistido antes del primer output del PTY
+    void window.api.loadScrollback(sessionId).then(saved => {
+      if (saved) term.write(saved)
+    })
+
+    const scheduleScrollbackSave = (): void => {
+      if (scrollbackSaveTimerRef.current) clearTimeout(scrollbackSaveTimerRef.current)
+      scrollbackSaveTimerRef.current = setTimeout(() => {
+        scrollbackSaveTimerRef.current = null
+        try {
+          const data = serializeAddonRef.current?.serialize()
+          if (data) window.api.saveScrollback(sessionId, data)
+        } catch { /* ignore */ }
+      }, 5000)
+    }
+
+    const writeToPty = (data: string): void => { window.api.ptyWrite(sessionId, data) }
+
+    const absorbUserInput = (raw: string): void => {
+      const { draft, completedLines } = feedCompletedUserLines(userLineDraftRef.current, raw)
+      userLineDraftRef.current = draft
+      if (completedLines.length > 0) {
+        setCmdSuggestCmd(null)
+        setCmdSuggestDraft('')
+        // Marcar como ocupado al enviar un comando al PTY
+        if (!isBusyRef.current) {
+          isBusyRef.current = true
+          onBusyChangeRef.current?.(true)
+        }
+        if (busySilenceTimerRef.current) clearTimeout(busySilenceTimerRef.current)
+        busySilenceTimerRef.current = setTimeout(() => {
+          busySilenceTimerRef.current = null
+          isBusyRef.current = false
+          onBusyChangeRef.current?.(false)
+        }, 350)
+      }
+      for (const line of completedLines) {
+        window.api.recordCdLine(sessionId, line)
+        if (!/^\s*(?:builtin\s+|command\s+)?cd(\s|$)/i.test(line.trim())) {
+          setRecentCommands(prev => pushRecentUnique(prev, line, MAX_RECENT_COMMANDS))
+        }
+        if (/^\s*(?:builtin\s+|command\s+)?cd(\s|$)/i.test(line.trim())) {
+          void loadCdPaths()
+        }
+      }
+      const t = draft.trimStart()
+      if (isCdStart(t)) {
+        setCdDraft(t)
+        if (!cdVisibleRef.current) {
+          cdVisibleRef.current = true
+          void loadCdLocalDirs()
+        }
+        setCdVisible(true)
+        setCmdSuggestCmd(null)
+        setCmdSuggestDraft('')
+      } else {
+        cdVisibleRef.current = false
+        setCdVisible(false)
+        setCdDraft('')
+        setCdLocalDirs([])
+        const matched = getMatchedCmd(t)
+        if (matched) {
+          setCmdSuggestCmd(matched)
+          setCmdSuggestDraft(t)
+        } else {
+          setCmdSuggestCmd(null)
+          /* Mantener el borrador para listar “recientes” (pnpm, yarn, etc.). */
+          setCmdSuggestDraft(t)
+        }
+      }
+    }
+    absorbUserInputRef.current = absorbUserInput
+
+    ptyInjectRef.current = (raw: string): void => {
+      absorbUserInput(raw)
+      writeToPty(raw)
+    }
+
+    onRegisterRef({
+      getSelection: () => term.getSelection(),
+      writeToTty: (data: string) => {
+        onRequestPaneFocusRef.current?.()
+        absorbUserInput(data)
+        writeToPty(data)
+        term.focus()
+      },
+      toggleAi: () => toggleAiRef.current(),
+      serialize: () => serializeAddonRef.current?.serialize() ?? '',
+    })
+
+    term.onData(data => { absorbUserInput(data); writeToPty(data) })
+    term.onTitleChange(title => { if (title && isActivePaneRef.current) onTitleChange(title) })
+
+    const resizeObs = new ResizeObserver(() => {
+      fitTerminalPreserveScroll(term, fit)
+      window.api.ptyResize(sessionId, term.cols, term.rows)
+    })
+    if (containerRef.current) resizeObs.observe(containerRef.current)
+
+    window.api.ptyCreate(sessionId, initialPtyCwd?.trim() || undefined)
+    window.api.ptyResize(sessionId, term.cols, term.rows)
+
+    const unsubData = window.api.onPtyData(sessionId, data => {
+      writePtyDataWithFollowScroll(term, data)
+      scheduleScrollbackSave()
+      // Mientras haya salida del PTY, el proceso sigue activo: resetear el timer de silencio
+      if (isBusyRef.current) {
+        if (busySilenceTimerRef.current) clearTimeout(busySilenceTimerRef.current)
+        busySilenceTimerRef.current = setTimeout(() => {
+          busySilenceTimerRef.current = null
+          isBusyRef.current = false
+          onBusyChangeRef.current?.(false)
+        }, 350)
+      }
+    })
+    const unsubExit = window.api.onPtyExit(sessionId, code => {
+      writePtyDataWithFollowScroll(term, `\r\n\x1b[2m[proceso terminado — código ${code}]\x1b[0m\r\n`)
+    })
+    const unsubErr = window.api.onPtyError(sessionId, message => {
+      writePtyDataWithFollowScroll(term, `\r\n\x1b[31m${message}\x1b[0m\r\n`)
+    })
+
+    return () => {
+      absorbUserInputRef.current = () => {}
+      ptyInjectRef.current = () => {}
+      if (scrollbackSaveTimerRef.current) {
+        clearTimeout(scrollbackSaveTimerRef.current)
+        scrollbackSaveTimerRef.current = null
+      }
+      if (busySilenceTimerRef.current) {
+        clearTimeout(busySilenceTimerRef.current)
+        busySilenceTimerRef.current = null
+      }
+      if (isBusyRef.current) {
+        isBusyRef.current = false
+        onBusyChangeRef.current?.(false)
+      }
+      cdVisibleRef.current = false
+      setCdVisible(false); setCdDraft(''); setCdLocalDirs([])
+      resizeObs.disconnect()
+      unsubData(); unsubExit(); unsubErr()
+      // Guardar scrollback final antes de desmontar
+      try {
+        const data = serializeAddonRef.current?.serialize()
+        if (data) window.api.saveScrollback(sessionId, data)
+      } catch { /* ignore */ }
+      serializeAddonRef.current = null
+      term.dispose()
+      onRegisterRef(null)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+
+  useEffect(() => {
+    const term = termRef.current
+    if (!term) return
+    term.options.theme = getTheme(config.themeId).xterm
+    // Force xterm to re-render all glyphs with the new palette
+    // (clearTextureAtlas is part of the proposed API, enabled above)
+    ;(term as Terminal & { clearTextureAtlas?: () => void }).clearTextureAtlas?.()
+  }, [config.themeId])
+
+  useEffect(() => {
+    const term = termRef.current
+    const fit = fitRef.current
+    if (term && fit) {
+      term.options.fontSize = config.fontSize
+      fitTerminalPreserveScroll(term, fit)
+      window.api.ptyResize(sessionId, term.cols, term.rows)
+    }
+  }, [config.fontSize, sessionId])
+
+  useEffect(() => {
+    if (tabActive && isActivePane && fitRef.current && termRef.current) {
+      setTimeout(() => {
+        const term = termRef.current!
+        const fit = fitRef.current!
+        fitTerminalPreserveScroll(term, fit)
+        window.api.ptyResize(sessionId, term.cols, term.rows)
+        term.focus()
+      }, 10)
+    }
+  }, [tabActive, isActivePane, sessionId])
+
+  const handleCdPick = (path: string): void => {
+    const cmd = `\x15cd ${shellSingleQuotePosix(path)}\r`
+    userLineDraftRef.current = ''
+    cdVisibleRef.current = false
+    setCdVisible(false); setCdDraft(''); setCdLocalDirs([])
+    absorbUserInputRef.current(cmd)
+    window.api.ptyWrite(sessionId, cmd)
+    termRef.current?.focus()
+  }
+
+  const handleCdLocalPick = (dirname: string): void => {
+    const cmd = `\x15cd ${shellSingleQuotePosix(dirname)}\r`
+    userLineDraftRef.current = ''
+    cdVisibleRef.current = false
+    setCdVisible(false); setCdDraft(''); setCdLocalDirs([])
+    absorbUserInputRef.current(cmd)
+    window.api.ptyWrite(sessionId, cmd)
+    termRef.current?.focus()
+  }
+
+  const cdArg = cdDraft.trimStart().replace(/^cd\s*/i, '').toLowerCase()
+  const visiblePaths = cdVisible ? filterPaths(cdPaths, cdDraft) : []
+  const visibleLocalDirs = cdVisible
+    ? (cdArg ? cdLocalDirs.filter(d => d.toLowerCase().includes(cdArg)) : cdLocalDirs)
+    : []
+
+  const handleCmdSnippetPick = (snippet: string): void => {
+    // Ctrl+U borra la línea, luego escribe el snippet SIN \r (no ejecuta)
+    const toWrite = `\x15${snippet}`
+    userLineDraftRef.current = snippet
+    const matched = getMatchedCmd(snippet.trimStart())
+    if (matched) {
+      setCmdSuggestCmd(matched)
+      setCmdSuggestDraft(snippet.trimStart())
+    } else {
+      setCmdSuggestCmd(null)
+      setCmdSuggestDraft(snippet.trimStart())
+    }
+    window.api.ptyWrite(sessionId, toWrite)
+    termRef.current?.focus()
+  }
+
+  const handleRecentCmdPick = (cmd: string): void => {
+    const toWrite = `\x15${cmd}`
+    userLineDraftRef.current = cmd
+    const matched = getMatchedCmd(cmd.trimStart())
+    if (matched) {
+      setCmdSuggestCmd(matched)
+      setCmdSuggestDraft(cmd.trimStart())
+    } else {
+      setCmdSuggestCmd(null)
+      setCmdSuggestDraft(cmd.trimStart())
+    }
+    window.api.ptyWrite(sessionId, toWrite)
+    termRef.current?.focus()
+  }
+
+  const handleClearCmdHistory = useCallback((): void => {
+    if (cmdHistorySaveTimerRef.current) {
+      clearTimeout(cmdHistorySaveTimerRef.current)
+      cmdHistorySaveTimerRef.current = null
+    }
+    setRecentCommands([])
+    window.api.deleteCmdHistory(sessionId)
+    termRef.current?.focus()
+  }, [sessionId])
+
+  const visibleSnippets: CmdSnippet[] = cmdSuggestCmd
+    ? filterCmdSnippetsByDraft(CMD_SNIPPETS[cmdSuggestCmd] ?? [], cmdSuggestDraft)
+    : []
+
+  const visibleRecentMatches = useMemo(
+    () => filterExecutedRecentsByDraft(recentCommands, cmdSuggestDraft, MAX_VISIBLE_RECENT_MATCHES),
+    [recentCommands, cmdSuggestDraft],
+  )
+
+  const showCmdSuggestPanel = visibleSnippets.length > 0 || visibleRecentMatches.length > 0
+  const showCdSuggestPanel = cdVisible && (visibleLocalDirs.length > 0 || cdPaths.length > 0)
+
+  const aiChatZoom =
+    (config.fontSize ?? CONFIG_DEFAULTS.fontSize) / CONFIG_DEFAULTS.fontSize
+
+  return (
+    <div
+      className={[
+        'terminal-pane',
+        tabActive && isActivePane ? 'terminal-pane--focused' : '',
+        tabActive && !isActivePane ? 'terminal-pane--inactive-pane' : '',
+      ].filter(Boolean).join(' ')}
+      style={
+        {
+          ['--terminal-pane-ai-chat-zoom' as string]: String(aiChatZoom),
+        } as React.CSSProperties
+      }
+    >
+      {paneToolbar?.onClosePane && (
+        <div className="pane-toolbar" onMouseDown={e => e.stopPropagation()}>
+          <button
+            type="button"
+            className="pane-toolbar-btn pane-toolbar-btn--close"
+            title="Cerrar este panel"
+            onClick={() => {
+              onRequestPaneFocusRef.current?.()
+              setConfirmClosePaneOpen(true)
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      )}
+      {/* Terminal body */}
+      <div className="terminal-pane-body">
+        <div className="terminal-pane-main" onMouseDown={() => onRequestPaneFocusRef.current?.()}>
+          <div ref={containerRef} className="terminal-container" />
+          {onRequestSplitPane && (
+            <button
+              type="button"
+              className="terminal-split-corner-btn"
+              title="Otra terminal a la derecha (misma carpeta) · ⌘Y"
+              aria-label="Añadir terminal a la derecha"
+              onMouseDown={e => e.stopPropagation()}
+              onClick={() => {
+                onRequestPaneFocusRef.current?.()
+                onRequestSplitPane()
+                termRef.current?.focus()
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {(showCdSuggestPanel || showCmdSuggestPanel) && (
+          <div className="terminal-suggest-stack">
+            {showCdSuggestPanel && (
+              <div className="cd-suggest" role="listbox" aria-label="Sugerencias de directorio">
+                {visibleLocalDirs.length > 0 && (
+                  <>
+                    <div className="cd-suggest-section-title">ubicación actual</div>
+                    {visibleLocalDirs.map(d => (
+                      <button
+                        key={`local:${d}`}
+                        type="button"
+                        className="cd-suggest-item"
+                        onMouseDown={e => { e.preventDefault(); handleCdLocalPick(d) }}
+                        role="option"
+                      >
+                        <span className="cd-suggest-folder-icon" aria-hidden="true">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+                          </svg>
+                        </span>
+                        <span className="cd-suggest-path">{d}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+                {visiblePaths.length > 0 && (
+                  <>
+                    <div className="cd-suggest-section-title">ubicaciones recientes</div>
+                    {visiblePaths.map(p => (
+                      <button
+                        key={`recent:${p}`}
+                        type="button"
+                        className="cd-suggest-item"
+                        onMouseDown={e => { e.preventDefault(); handleCdPick(p) }}
+                        role="option"
+                      >
+                        <span className="cd-suggest-prompt">~›</span>
+                        <span className="cd-suggest-path">{p}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+            {showCmdSuggestPanel && (
+              <div
+                className="cmd-suggest"
+                role="listbox"
+                aria-label={
+                  visibleRecentMatches.length > 0 && visibleSnippets.length > 0
+                    ? `Comandos recientes y sugerencias${cmdSuggestCmd ? ` (${cmdSuggestCmd})` : ''}`
+                    : visibleRecentMatches.length > 0
+                      ? 'Comandos recientes'
+                      : cmdSuggestCmd
+                        ? `Sugerencias para ${cmdSuggestCmd}`
+                        : 'Sugerencias'
+                }
+              >
+                {visibleRecentMatches.length > 0 && (
+                  <div
+                    className={[
+                      'cmd-suggest-recent-block',
+                      visibleSnippets.length > 0 ? 'cmd-suggest-recent-block--sep' : '',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    <div className="cmd-suggest-section-header">
+                      <div className="cmd-suggest-section-title cmd-suggest-section-title--in-header">recientes</div>
+                      <button
+                        type="button"
+                        className="cmd-suggest-clear-history-btn"
+                        title="Borrar la lista de comandos recientes de esta terminal (no afecta al historial del shell)"
+                        onMouseDown={e => {
+                          e.preventDefault()
+                          handleClearCmdHistory()
+                        }}
+                      >
+                        Vaciar historial
+                      </button>
+                    </div>
+                    {visibleRecentMatches.map(cmd => (
+                      <button
+                        key={`recent:${cmd}`}
+                        type="button"
+                        className="cmd-suggest-item"
+                        onMouseDown={e => { e.preventDefault(); handleRecentCmdPick(cmd) }}
+                        role="option"
+                        title="Escribir en la terminal (sin ejecutar)"
+                      >
+                        <span className="cmd-suggest-script-icon" aria-hidden="true">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="4 17 10 11 4 5"/>
+                            <line x1="12" y1="19" x2="20" y2="19"/>
+                          </svg>
+                        </span>
+                        <CmdSuggestHighlightedLabel display={cmd} draft={cmdSuggestDraft} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {visibleSnippets.length > 0 && (
+                  <div className="cmd-suggest-static-block">
+                    <div className="cmd-suggest-section-title">{cmdSuggestCmd}</div>
+                    {visibleSnippets.map(s => (
+                      <button
+                        key={s.cmd}
+                        type="button"
+                        className="cmd-suggest-item"
+                        onMouseDown={e => { e.preventDefault(); handleCmdSnippetPick(s.cmd) }}
+                        role="option"
+                        title="Escribir en la terminal (sin ejecutar)"
+                      >
+                        <span className="cmd-suggest-script-icon" aria-hidden="true">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="4 17 10 11 4 5"/>
+                            <line x1="12" y1="19" x2="20" y2="19"/>
+                          </svg>
+                        </span>
+                        <CmdSuggestHighlightedLabel display={s.label} draft={cmdSuggestDraft} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Asistente IA: siempre visible abajo; colapsado solo muestra barra con modelo */}
+      <div
+        className={[
+          'terminal-pane-ai-dock',
+          aiExpanded ? '' : 'terminal-pane-ai-dock--collapsed',
+        ].filter(Boolean).join(' ')}
+      >
+        {!aiExpanded && (
+          <button
+            type="button"
+            className="ai-dock-collapsed-bar"
+            onClick={expandAiFromBar}
+            title="Expandir chat IA"
+            aria-expanded="false"
+          >
+            <div className="ai-dock-collapsed-title">
+              <span className="ai-dock-collapsed-prompt" aria-hidden="true">#</span>
+              <span className="ai-dock-collapsed-label">ia</span>
+              <span className="ai-dock-collapsed-model-badge">{config.defaultModel}</span>
+            </div>
+            <span className="ai-dock-collapsed-hint" aria-hidden="true">▲</span>
+          </button>
+        )}
+        <div
+          className={['ai-dock-body', aiExpanded ? '' : 'ai-dock-body--hidden'].filter(Boolean).join(' ')}
+          aria-hidden={!aiExpanded}
+        >
+          <AiPanel
+            config={config}
+            sessionId={sessionId}
+            selectedText={aiSelectedText}
+            getTerminalContext={getTerminalContext}
+            onInjectLine={injectLineFromAi}
+            onCollapse={() => onAiExpandedChange(false)}
+            expanded={aiExpanded}
+          />
+        </div>
+      </div>
+
+      <ConfirmTerminalModal
+        open={confirmClosePaneOpen}
+        message="¿Cerrar este panel?"
+        detail="Se cerrará la sesión de esta terminal (PTY de esta celda)."
+        onConfirm={() => {
+          setConfirmClosePaneOpen(false)
+          paneToolbar?.onClosePane?.()
+        }}
+        onCancel={() => setConfirmClosePaneOpen(false)}
+      />
+    </div>
+  )
+}

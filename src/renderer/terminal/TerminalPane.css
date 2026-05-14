@@ -1,0 +1,446 @@
+.terminal-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  position: relative;
+}
+
+/* Asistente IA: ancho completo del pane, pegado abajo (sticky respecto al pane). */
+.terminal-pane-ai-dock {
+  flex-shrink: 0;
+  width: 100%;
+  min-height: 0;
+  max-height: 50%;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  bottom: 0;
+  z-index: 45;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
+  /* Escala acorde a la fuente de la terminal. `zoom` aquí rompe scroll/rueda en `.ai-messages` (Chromium). */
+  font-size: calc(12px * var(--terminal-pane-ai-chat-zoom, 1));
+}
+
+.terminal-pane-ai-dock--collapsed {
+  max-height: none;
+}
+
+.ai-dock-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ai-dock-body--hidden {
+  display: none;
+}
+
+/* Barra colapsada: misma línea visual que la cabecera del panel IA */
+.ai-dock-collapsed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 10px 4px 8px;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 0.9167em;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--accent) 10%, color-mix(in srgb, var(--surface) 42%, var(--bg)));
+  border: none;
+  border-left: 3px solid var(--accent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+
+.ai-dock-collapsed-bar:hover {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--accent) 14%, color-mix(in srgb, var(--surface) 50%, var(--bg)));
+}
+
+.ai-dock-collapsed-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  font-weight: 600;
+}
+
+.ai-dock-collapsed-prompt {
+  color: var(--accent);
+  opacity: 0.95;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.ai-dock-collapsed-label {
+  text-transform: lowercase;
+  color: var(--text);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.ai-dock-collapsed-model-badge {
+  font-size: 0.8333em;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  color: color-mix(in srgb, var(--accent) 35%, var(--text-muted));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: min(52vw, 220px);
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.ai-dock-collapsed-hint {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8333em;
+  color: color-mix(in srgb, var(--accent) 55%, var(--text-muted));
+  opacity: 0.9;
+}
+
+.terminal-pane--inactive-pane .terminal-pane-main,
+.terminal-pane--inactive-pane .terminal-suggest-stack,
+.terminal-pane--inactive-pane .terminal-pane-ai-dock {
+  opacity: 0.9;
+}
+
+.pane-toolbar {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 40;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+}
+
+.pane-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text-muted);
+  opacity: 0.92;
+  cursor: pointer;
+  transition: color 0.12s, opacity 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.pane-toolbar-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.pane-toolbar-btn--close:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface-hover));
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+  opacity: 1;
+}
+
+/* + nueva terminal a la derecha: esquina inferior del área xterm */
+.terminal-split-corner-btn {
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text-muted);
+  opacity: 0.92;
+  cursor: pointer;
+  transition: color 0.12s, opacity 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.terminal-split-corner-btn:hover {
+  color: var(--accent);
+  opacity: 1;
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+.terminal-split-corner-btn:active {
+  opacity: 0.88;
+}
+
+
+/* Body: terminal + dock de sugerencias (flujo flex, no flotante) */
+.terminal-pane-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  overflow: hidden;
+}
+
+/* Área del xterm */
+.terminal-pane-main {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Let xterm fill the container */
+.terminal-container .xterm {
+  height: 100%;
+}
+
+
+.terminal-suggest-stack {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-height: min(40vh, 320px);
+  min-height: 0;
+  margin-top: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.terminal-suggest-stack > * {
+  min-height: 0;
+}
+
+.terminal-suggest-stack .cd-suggest {
+  border-top: none;
+}
+
+.cd-suggest {
+  position: relative;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  max-height: 260px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.cd-suggest-section-title {
+  padding: 4px 12px 3px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface) 30%, var(--bg-secondary));
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.cd-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  transition: background 0.08s;
+}
+
+.cd-suggest-item:hover {
+  background: var(--surface);
+}
+
+.cd-suggest-folder-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-muted));
+}
+
+.cd-suggest-prompt {
+  color: var(--accent);
+  opacity: 0.65;
+  font-size: 11px;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
+}
+
+.cd-suggest-path {
+  color: var(--text);
+  word-break: break-all;
+}
+
+.cd-suggest-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ── Sugerencias de comandos (git, npm, docker, …) ──────────────────────── */
+
+.cmd-suggest {
+  position: relative;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.terminal-suggest-stack .cmd-suggest {
+  border-top: none;
+}
+
+.cmd-suggest-recent-block--sep {
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+}
+
+.cmd-suggest-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 3px 12px;
+  background: color-mix(in srgb, var(--accent) 8%, color-mix(in srgb, var(--surface) 30%, var(--bg-secondary)));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+}
+
+.cmd-suggest-section-title--in-header {
+  padding: 0;
+  border: none;
+  background: transparent;
+  flex: 1;
+  min-width: 0;
+}
+
+.cmd-suggest-clear-history-btn {
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: color-mix(in srgb, var(--surface) 55%, var(--bg-secondary));
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.08s, background 0.08s, border-color 0.08s;
+}
+
+.cmd-suggest-clear-history-btn:hover {
+  color: var(--text);
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+/* Varias secciones (recientes + estáticas): evita dos barras sticky superpuestas al hacer scroll */
+.cmd-suggest .cmd-suggest-section-title {
+  position: static;
+}
+
+.cmd-suggest-section-title {
+  padding: 4px 12px 3px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent) 75%, var(--text-muted));
+  background: color-mix(in srgb, var(--accent) 8%, color-mix(in srgb, var(--surface) 30%, var(--bg-secondary)));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.cmd-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  transition: background 0.08s;
+}
+
+.cmd-suggest-item:hover {
+  background: var(--surface);
+}
+
+.cmd-suggest-script-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--accent) 55%, var(--text-muted));
+}
+
+.cmd-suggest-label {
+  color: var(--text);
+  word-break: break-all;
+}
+
+.cmd-suggest-label__typed {
+  color: color-mix(in srgb, var(--accent) 68%, var(--text));
+  font-weight: 600;
+}
+
+.cmd-suggest-label__rest {
+  color: var(--text);
+  font-weight: 400;
+}

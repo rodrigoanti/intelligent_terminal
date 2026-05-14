@@ -1,0 +1,215 @@
+.tabbar {
+  display: flex;
+  align-items: stretch;
+  height: var(--tabbar-height);
+  background: var(--tab-inactive-bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.tabbar-scroll {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  scrollbar-width: none;
+}
+
+.tabbar-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px 0 6px;
+  min-width: 120px;
+  max-width: 200px;
+  background: var(--tab-inactive-bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+  transition: background 0.12s, color 0.12s;
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tab:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.tab--active {
+  background: var(--tab-active-bg);
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.tab--drag-over {
+  border-left: 2px solid var(--accent);
+}
+
+/* ── Folder button ─────────────────────────────── */
+
+.tab-folder-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+
+.tab:hover .tab-folder-btn,
+.tab--active .tab-folder-btn {
+  opacity: 0.7;
+}
+
+.tab-folder-btn:hover {
+  background: var(--surface-hover);
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* ── Terminal icon ─────────────────────────────── */
+
+.tab-icon {
+  flex-shrink: 0;
+  opacity: 0.45;
+  display: flex;
+  align-items: center;
+}
+
+.tab--active .tab-icon {
+  opacity: 0.8;
+  color: var(--accent);
+}
+
+/* ── Spinner de actividad ──────────────────────── */
+
+@keyframes tab-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tab-spinner {
+  flex-shrink: 0;
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: tab-spin 0.65s linear infinite;
+}
+
+/* ── Tab title ─────────────────────────────────── */
+
+.tab-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.tab-title--editable {
+  cursor: text;
+}
+
+.tab-title--editable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.tab-title-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  color: inherit;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  outline: none;
+  box-shadow: none;
+}
+
+/* Un solo borde: el :focus-visible global añade outline a todos los inputs */
+.tab-title-input:focus,
+.tab-title-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: var(--accent);
+}
+
+/* ── Close button ──────────────────────────────── */
+
+.tab-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  opacity: 0;
+  color: var(--text-muted);
+  transition: opacity 0.12s, background 0.12s, border-color 0.12s, color 0.12s;
+  cursor: pointer;
+}
+
+.tab:hover .tab-close,
+.tab--active .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface-hover));
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+  color: var(--danger);
+}
+
+/* ── Add tab: solo icono, sin caja ────────────────────────────── */
+
+.tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.12s, opacity 0.12s;
+}
+
+.tab-add:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+.tab-add:active {
+  opacity: 0.75;
+}
