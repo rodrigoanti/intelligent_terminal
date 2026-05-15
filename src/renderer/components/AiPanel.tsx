@@ -11,7 +11,7 @@ import {
   makeInteractionLogEntry,
 } from '@ai/ollamaClient'
 import type { ChatMessage } from '@ai/ollamaClient'
-import type { AppConfig } from '@shared/configSchema'
+import type { AppConfig, AgentShellPolicy } from '@shared/configSchema'
 import type { ProjectAiContextForAi } from '@shared/projectAiContext'
 import { runChatWithAgentFileLoop } from '../ai/agentModeRunner'
 import { ConfirmTerminalModal } from './ConfirmTerminalModal'
@@ -630,6 +630,7 @@ export const AiPanel: React.FC<Props> = ({
   }
 
   function handleHeaderKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
+    if ((e.target as HTMLElement).closest('.ai-panel-shell-policy')) return
     if ((e.target as HTMLElement).closest('.ai-panel-agent-toggle')) return
     if ((e.target as HTMLElement).closest('.ai-panel-think-toggle')) return
     if (e.key === 'Enter' || e.key === ' ') {
@@ -641,6 +642,7 @@ export const AiPanel: React.FC<Props> = ({
   function handleHeaderClick(e: React.MouseEvent<HTMLDivElement>): void {
     const t = e.target as HTMLElement
     if (t.closest('.ai-panel-delete')) return
+    if (t.closest('.ai-panel-shell-policy')) return
     if (t.closest('.ai-panel-agent-toggle')) return
     if (t.closest('.ai-panel-think-toggle')) return
     onCollapse()
@@ -672,7 +674,7 @@ export const AiPanel: React.FC<Props> = ({
           expanded ? 'ai-panel-header--expanded-chrome' : 'ai-panel-header--compact-chrome',
         ].filter(Boolean).join(' ')}
         role="button"
-        tabIndex={0}
+        tabIndex={-1}
         aria-expanded={expanded}
         aria-label={expanded ? 'Ocultar panel de IA (clic en la barra)' : 'Abrir panel de IA'}
         onClick={handleChromeClick}
@@ -694,7 +696,7 @@ export const AiPanel: React.FC<Props> = ({
                   aria-label="Modo agente"
                   disabled={!onConfigPatch}
                   className={`ai-panel-agent-toggle ai-agent-switch${config.agentMode ? ' ai-agent-switch--on' : ''}`}
-                  title="Modo agente: lectura/escritura de archivos y (según ajustes) ejecución de comandos en el cwd de la sesión."
+                  title="Modo agente: lectura/escritura de archivos en el cwd de la sesión. Los comandos shell dependen del menú «shell»."
                   onClick={e => {
                     e.stopPropagation()
                     void onConfigPatch?.({ agentMode: !config.agentMode })
@@ -706,6 +708,28 @@ export const AiPanel: React.FC<Props> = ({
                   </span>
                   <span className="ai-panel-agent-label">agente</span>
                 </button>
+                <select
+                  className="ai-panel-shell-policy"
+                  aria-label="Política de comandos shell del agente"
+                  title={
+                    !config.agentMode
+                      ? 'Activa «agente» para usar RUN. Off = no ejecutar; preguntar = confirmación por comando; siempre = sin preguntar (riesgo).'
+                      : 'Off = no ejecutar bloques RUN; preguntar = confirmación por comando; siempre = ejecutar sin preguntar (peligroso en cwd no confiable).'
+                  }
+                  value={config.agentShellPolicy ?? 'off'}
+                  disabled={!onConfigPatch || !config.agentMode}
+                  onClick={e => e.stopPropagation()}
+                  onMouseDown={e => e.stopPropagation()}
+                  onKeyDown={e => e.stopPropagation()}
+                  onChange={e => {
+                    e.stopPropagation()
+                    void onConfigPatch?.({ agentShellPolicy: e.target.value as AgentShellPolicy })
+                  }}
+                >
+                  <option value="off">shell: no</option>
+                  <option value="ask">shell: preguntar</option>
+                  <option value="always">shell: siempre</option>
+                </select>
                 <button
                   type="button"
                   role="switch"
@@ -755,6 +779,7 @@ export const AiPanel: React.FC<Props> = ({
             <p className="ai-chat-empty-kicker">Puerta al modelo</p>
             <p className="ai-chat-empty-lead">
               Explica salidas, pide comandos o enciende el agente: la IA vive al lado del PTY, sin perder el contexto de esta pestaña.
+              Con agente activo, el menú «shell» decide si se ejecutan comandos propuestos por el modelo (cwd de la sesión, no el PTY visible).
             </p>
           </div>
         )}

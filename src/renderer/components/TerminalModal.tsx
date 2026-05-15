@@ -15,6 +15,7 @@ export interface TerminalModalProps {
   /** Por defecto 640; confirmaciones históricas usan 600 */
   zIndex?: number
   closeOnEscape?: boolean
+  /** Clic en el fondo oscuro; por defecto no cierra (usar ✕, Esc si aplica, o botones del pie). */
   closeOnBackdrop?: boolean
   /** Botón ✕ en la esquina del encabezado (solo si hay `title`) */
   showHeaderClose?: boolean
@@ -24,6 +25,7 @@ export interface TerminalModalProps {
 
 /**
  * Contenedor común para modales estilo terminal: backdrop, panel, tipografía mono.
+ * El fondo no cierra el modal por defecto; se puede activar con `closeOnBackdrop`.
  */
 export const TerminalModal: React.FC<TerminalModalProps> = ({
   open,
@@ -35,7 +37,7 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
   size = 'md',
   zIndex = 640,
   closeOnEscape = true,
-  closeOnBackdrop = true,
+  closeOnBackdrop = false,
   showHeaderClose = true,
   panelClassName = '',
   bodyClassName = '',

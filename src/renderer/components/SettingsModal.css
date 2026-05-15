@@ -219,3 +219,30 @@
   background: var(--surface-hover);
   color: var(--text);
 }
+
+/* Spotify (IDs de playlist en ajustes) */
+.settings-spotify-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-spotify-row .settings-label--compact {
+  gap: 4px;
+  margin: 0;
+}
+
+.settings-spotify-row .settings-label--compact input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 7px 9px;
+  border-radius: calc(var(--radius) / 2);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.settings-spotify-row .settings-label--compact input:focus {
+  outline: none;
+  border-color: var(--accent);
+}

@@ -1,6 +1,6 @@
 # Errores conocidos y mitigaciones
 
-Historial de fallos reproducibles en **Electron + macOS** (y en parte multiplataforma) relacionados con **xterm.js**, composición de Chromium y temas. Sirve para evitar regresiones al cambiar CSS, temas o el ciclo de vida del panel de terminal.
+Historial de fallos reproducibles en **Electron + macOS** (y en parte multiplataforma) relacionados con **xterm.js**, **PTY / IPC**, **foco del teclado**, composición de Chromium y temas. Sirve para evitar regresiones al cambiar CSS, temas o el ciclo de vida del panel de terminal.
 
 ---
 
@@ -32,7 +32,7 @@ Historial de fallos reproducibles en **Electron + macOS** (y en parte multiplata
 | `electron/main.ts` | En macOS, **no** usar `vibrancy` / `visualEffectState` en `BrowserWindow` cuando hay terminal canvas (comentarios en código). |
 | `src/themes/presets.ts` | Eliminado el tema **Apple Liquid Glass** (`appleLiquidGlass`). Función **`normalizeThemeId()`**: si el `themeId` guardado ya no existe en `THEMES`, se usa `vscodeDark`. |
 | `src/renderer/App.tsx` | Al cargar la config: **`normalizeThemeId(cfg.themeId)`**; si cambia el id, **`setConfig({ themeId })`** para persistir y evitar configs huérfanas. |
-| `src/renderer/terminal/TerminalPane.tsx` | **`writePtyDataWithFollowScroll(term, data, afterParsed?)`**: siempre pasa **callback** a `term.write()`; ahí se hace scroll al fondo cuando corresponde y **`scheduleTerminalCanvasRepaint`** (tras procesar la escritura). Repintado al teclear en **`term.onData`** con **`termAlive`** y la instancia **`term`** del efecto (no `termRef` dentro del RAF). Limpieza: **`termAlive = false`**, cancelar RAF pendiente, **`termRef`/`fitRef` → null** antes de **`term.dispose()`**. |
+| `src/renderer/terminal/TerminalPane.tsx` | **`writePtyDataWithFollowScroll(term, data, afterParsed?)`**: siempre pasa **callback** a `term.write()`; ahí se hace scroll al fondo cuando corresponde y **`scheduleTerminalCanvasRepaint`** (tras procesar la escritura). El callback va envuelto en **`try/catch`** para que **`scrollToBottom()`** no reviente si el viewport aún no tiene `dimensions` (dispose / carrera). Repintado al teclear en **`term.onData`** con **`termAlive`** y **`termRef.current === term`** en RAFs. Limpieza: **`termAlive = false`**, cancelar RAF pendiente, **`termRef`/`fitRef` → null** antes de **`term.dispose()`**. Tras **`PTY_EXIT`**, **re-lanzar shell** en el mismo `sessionId` si el panel sigue montado (ver **§2**). |
 | `src/renderer/terminal/TerminalPane.css` | **`isolation: isolate`** en `.terminal-container` para aislar la composición del área del canvas respecto al resto del chrome. |
 | `src/renderer/main.tsx` | Sin hoja global “liquid glass”; los temas restantes no fuerzan transparencia en la raíz para ese caso. |
 
@@ -50,7 +50,69 @@ Historial de fallos reproducibles en **Electron + macOS** (y en parte multiplata
 
 ---
 
-## 2. Migración de `themeId` obsoleto
+## 2. Terminal sin eco tras `[proceso terminado]` (PTY desaparece del mapa)
+
+### Síntomas
+
+- Tras el mensaje **`[proceso terminado — código …]`**, al teclear **no se ve nada** en xterm.
+- A veces **sí** se actualizan sugerencias / “recientes” (el renderer sigue recibiendo **`term.onData`** y llama a **`ptyWrite`**, pero en **main** ya no hay proceso asociado al `sessionId`).
+- Comandos raros en historial (fragmentos pegados) si el usuario sigue escribiendo “contra” un PTY inexistente.
+
+### Causa
+
+En **`electron/main.ts`**, al salir el proceso del shell, **`ptySessions.delete(sessionId)`** dejaba de haber destino para **`PTY_WRITE`**. El eco deja de llegar porque **no hay shell** que responda; no es un fallo del canvas en sí.
+
+### Mitigación
+
+| Archivo | Qué hace |
+|---------|----------|
+| `electron/main.ts` | En **`proc.onExit`**: solo se quita la entrada del **mapa de PTY**; **no** se llama a **`clearSessionCdState`** ahí, para que **`GET_SESSION_CWD`** siga devolviendo el cwd lógico al **recrear** el shell. **`killPty()`** (cierre explícito de pestaña / nuevo `pty:create`) **siempre** ejecuta **`clearSessionCdState`**, incluso si el proceso ya no estaba en el mapa. |
+| `src/renderer/terminal/TerminalPane.tsx` | En el handler de **`PTY_EXIT`**: tras escribir el mensaje en xterm, **`getSessionCwd` → `ptyCreate` → `fitTerminalPreserveScroll` → `ptyResize`** con **`Math.max(1, cols/rows)`**, en **doble `requestAnimationFrame`**, con comprobaciones **`termAlive`**, **`termRef.current === term`** y **`containerRef.current?.isConnected`** para no respawnear si el panel ya se desmontó. |
+
+### Regresión a evitar
+
+- Volver a borrar el **cwd lógico** en **`onExit`** del PTY rompe el respawn con la carpeta correcta.
+- Respawn **síncrono** inmediato tras salida puede chocar con xterm sin dimensiones: por eso el **doble rAF** y el **fit** antes del resize.
+
+---
+
+## 3. `TypeError: Cannot read properties of undefined (reading 'dimensions')` (xterm `Viewport.syncScrollArea`)
+
+### Síntomas
+
+- Error en consola del renderer apuntando a **`@xterm/xterm`** / **`Viewport.syncScrollArea`**.
+- Suele aparecer al **redimensionar**, **scroll**, **cerrar pestaña** o **recrear el PTY** en carrera con el ciclo de vida de React.
+
+### Causa
+
+Llamadas a **`scrollToBottom`**, **`refresh`**, **`fit`** o listeners (**`ResizeObserver`**, scroll del viewport) sobre una instancia de **`Terminal`** ya **inválida** o con **0 filas/columnas**, o RAFs pendientes tras **`dispose()`**.
+
+### Mitigaciones en `TerminalPane.tsx`
+
+- **`termAlive`** al **inicio** del `useEffect` del terminal (antes de registrar listeners).
+- **`updateTerminalScrollDown`**, **`scheduleScrollDownIndicator`**, **`scheduleTerminalCanvasRepaint`**, **`ResizeObserver`** y **`onPtyData` / `onPtyExit` / `onPtyError`**: comprobar **`termAlive`** y **`termRef.current === term`** antes de tocar xterm; **`try/catch`** donde aplique.
+- **`fitTerminalPreserveScroll`**: envuelto en **`try/catch`**.
+- **`ptyResize`**: usar **`Math.max(1, term.cols)`** y **`Math.max(1, term.rows)`** en todos los sitios que redimensionan el PTY.
+
+---
+
+## 4. Teclado no llega al shell (foco fuera del textarea de xterm)
+
+### Síntomas
+
+- No se escribe en el terminal **ni** se actualizan sugerencias (o solo una de las dos, según el caso).
+- Tras usar la **barra de IA**, **modales** o botones de la **barra de título**, el foco puede quedarse en un **`role="button"`** o en **`document.body`**.
+
+### Mitigación
+
+| Archivo | Qué hace |
+|---------|----------|
+| `src/renderer/components/AiPanel.tsx` | Cabecera del panel IA: **`tabIndex={-1}`** para que no robe el foco del flujo de tabulación respecto al textarea de xterm (el atajo **⌘I** sigue abriendo/cerrando el chat). |
+| `src/renderer/App.tsx` | Botones de la barra (tamaño de fuente, tema, ajustes) y **`TitlebarMusicControls`**: **`tabIndex={-1}`** donde corresponde. **`focusActiveTerminalTextarea()`** al cerrar **Ajustes** y **selector de tema** (y equivalente cuando haga falta) para devolver el foco al **`.xterm-helper-textarea`** de la pestaña activa. |
+
+---
+
+## 5. Migración de `themeId` obsoleto
 
 Si `~/Library/Application Support/AI Terminal/config.json` (ruta típica en macOS) contiene **`themeId`** igual a un tema eliminado (p. ej. `appleLiquidGlass`) o a un id desconocido, al arrancar la app:
 

@@ -24,13 +24,14 @@
 .tab {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 10px 0 6px;
-  min-width: 120px;
+  gap: 4px;
+  padding: 0 7px 0 10px;
+  min-width: 112px;
   max-width: 200px;
   background: var(--tab-inactive-bg);
   color: var(--text-muted);
   font-size: 12px;
+  line-height: 1.15;
   border-right: 1px solid var(--border);
   border-bottom: 2px solid transparent;
   transition: background 0.12s, color 0.12s;
@@ -53,36 +54,6 @@
 
 .tab--drag-over {
   border-left: 2px solid var(--accent);
-}
-
-/* ── Folder button ─────────────────────────────── */
-
-.tab-folder-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  opacity: 0;
-  cursor: pointer;
-  padding: 0;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
-}
-
-.tab:hover .tab-folder-btn,
-.tab--active .tab-folder-btn {
-  opacity: 0.7;
-}
-
-.tab-folder-btn:hover {
-  background: var(--surface-hover);
-  color: var(--accent);
-  opacity: 1;
 }
 
 /* ── Terminal icon ─────────────────────────────── */
@@ -194,7 +165,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  width: 30px;
   flex-shrink: 0;
   color: var(--text-muted);
   background: transparent;

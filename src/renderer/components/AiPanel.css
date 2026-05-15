@@ -78,7 +78,7 @@
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
   border-left: 3px solid var(--accent);
   background: color-mix(in srgb, var(--surface) 26%, var(--ai-panel-base));
-  padding: 7px 10px 8px 8px;
+  padding: 8px 12px 9px 9px;
 }
 
 .ai-panel-header--toggle {
@@ -101,7 +101,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -109,7 +109,7 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   font-weight: 600;
   color: var(--text-muted);
@@ -140,7 +140,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: min(40vw, 190px);
-  padding: 1px 7px;
+  padding: 2px 9px;
   border-radius: var(--ai-bubble-r);
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
@@ -148,7 +148,7 @@
 
 /* Colapsado: debe ir DESPUÉS de .ai-panel-header para no perder contra padding/borde base */
 .ai-panel-header.ai-panel-header--compact-chrome {
-  padding: 4px 10px 4px 7px;
+  padding: 5px 11px 5px 8px;
   border-bottom: none;
   border-left-width: 2px;
   font-size: 0.88em;
@@ -167,7 +167,7 @@
 .ai-panel-header.ai-panel-header--compact-chrome .ai-panel-title {
   align-items: center;
   flex-wrap: nowrap;
-  gap: 5px;
+  gap: 6px;
 }
 
 .ai-panel-header.ai-panel-header--compact-chrome .ai-panel-prompt {
@@ -181,7 +181,7 @@
 }
 
 .ai-panel-header.ai-panel-header--compact-chrome .ai-model-badge {
-  padding: 0 5px;
+  padding: 1px 6px;
   font-size: 0.78em;
   line-height: 1.2;
   max-width: min(38vw, 160px);
@@ -190,8 +190,38 @@
 .ai-panel-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.ai-panel-shell-policy {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface) 42%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: 4px;
+  padding: 3px 5px;
+  max-width: 11rem;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.ai-panel-shell-policy:hover:not(:disabled) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.ai-panel-shell-policy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ai-panel-shell-policy:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .ai-panel-agent-toggle,

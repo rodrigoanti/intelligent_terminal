@@ -20,8 +20,8 @@
   --radius: 8px;
 
   /* Fixed layout measures */
-  --titlebar-height: 44px;
-  --tabbar-height: 40px;
+  --titlebar-height: 36px;
+  --tabbar-height: 32px;
   --ai-panel-width: 360px;
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', monospace;

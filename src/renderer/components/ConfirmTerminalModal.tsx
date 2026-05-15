@@ -15,7 +15,7 @@ interface Props {
 }
 
 /**
- * Confirmación estilo consola: Enter o clic en OK confirma; Esc o backdrop cancelan (vía TerminalModal).
+ * Confirmación estilo consola: Enter o clic en OK confirma; Esc cancela (vía TerminalModal).
  */
 export const ConfirmTerminalModal: React.FC<Props> = ({
   open, message, detail, zIndex = 600, onConfirm, onCancel,
@@ -45,7 +45,6 @@ export const ConfirmTerminalModal: React.FC<Props> = ({
       zIndex={zIndex}
       showHeaderClose={false}
       closeOnEscape
-      closeOnBackdrop
       footer={
         <div className="confirm-terminal-actions">
           <button type="button" className="confirm-terminal-no" onClick={onCancel}>

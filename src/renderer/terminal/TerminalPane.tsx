@@ -245,24 +245,26 @@ function CmdSuggestHighlightedLabel({ display, draft }: { display: string; draft
  * se conserva la misma línea superior del viewport.
  */
 function fitTerminalPreserveScroll(term: Terminal, fit: FitAddon): void {
-  const buf = term.buffer.active
-  if (buf.type !== 'normal') {
+  try {
+    const buf = term.buffer.active
+    if (buf.type !== 'normal') {
+      fit.fit()
+      return
+    }
+    const savedTop = buf.viewportY
+    const wasAtBottom = savedTop >= buf.baseY
     fit.fit()
-    return
+    const b = term.buffer.active
+    if (b.type !== 'normal') return
+    if (wasAtBottom) {
+      term.scrollToBottom()
+      return
+    }
+    const target = Math.min(Math.max(0, savedTop), Math.max(0, b.baseY))
+    term.scrollToLine(target)
+  } catch {
+    /* syncScrollArea / dimensions */
   }
-  const savedTop = buf.viewportY
-  const wasAtBottom = savedTop >= buf.baseY
-  fit.fit()
-  const b = term.buffer.active
-  if (b.type !== 'normal') return
-  if (wasAtBottom) {
-    term.scrollToBottom()
-    return
-  }
-  // b.baseY es el techo válido de viewportY. b.length-rows puede ser 0 tras resize
-  // cuando xterm recompacta el scrollback, forzando target=0 y saltando al inicio.
-  const target = Math.min(Math.max(0, savedTop), Math.max(0, b.baseY))
-  term.scrollToLine(target)
 }
 
 /**
@@ -270,24 +272,29 @@ function fitTerminalPreserveScroll(term: Terminal, fit: FitAddon): void {
  * fuerza el scroll al final usando el callback de term.write() en lugar de rAF.
  */
 function writePtyDataWithFollowScroll(term: Terminal, data: string, afterParsed?: () => void): void {
-  const buf = term.buffer.active
-  const wasFollowing =
-    buf.type === 'normal' &&
-    buf.viewportY >= buf.baseY &&
-    term.getSelection().length === 0
-  // xterm v5 procesa escrituras PTY con setTimeout(() => _innerWrite()), mientras
-  // que rAF se ejecuta ANTES que setTimeout en el event loop. Si usáramos rAF,
-  // scrollToBottom() dispararía cuando buf.baseY todavía tiene el valor anterior
-  // (la escritura no fue procesada aún) → el scroll apunta al fondo incorrecto.
-  // El callback de term.write() dispara desde dentro de _innerWrite(), justo
-  // después de que baseY se actualizó, garantizando que scrollToBottom() apunta
-  // al fondo real. El mismo hook sirve para repintar el canvas (Electron/macOS).
-  term.write(data, () => {
-    if (wasFollowing && term.buffer.active.type === 'normal') {
-      term.scrollToBottom()
-    }
-    afterParsed?.()
-  })
+  try {
+    const buf = term.buffer.active
+    const wasFollowing =
+      buf.type === 'normal' &&
+      buf.viewportY >= buf.baseY &&
+      term.getSelection().length === 0
+    term.write(data, () => {
+      try {
+        if (wasFollowing && term.buffer.active.type === 'normal') {
+          term.scrollToBottom()
+        }
+      } catch {
+        /* xterm puede estar disposed o sin dimensions (Viewport.syncScrollArea) */
+      }
+      try {
+        afterParsed?.()
+      } catch {
+        /* ignore */
+      }
+    })
+  } catch {
+    /* buffer / write inválido (dispose en curso) */
+  }
 }
 
 /**
@@ -470,6 +477,13 @@ export const TerminalPane: React.FC<Props> = ({
     e.stopPropagation()
   }, [])
 
+  const openThisPaneFolderInFinder = useCallback(async (): Promise<void> => {
+    try {
+      const cwd = await window.api.getSessionCwd(sessionId)
+      if (cwd) window.api.openFolder(cwd)
+    } catch { /* ignore */ }
+  }, [sessionId])
+
   /** Reserva espacio bajo el xterm cuando el dock IA está colapsado (overlay absolute). */
   useLayoutEffect(() => {
     const root = paneRootRef.current
@@ -598,6 +612,9 @@ export const TerminalPane: React.FC<Props> = ({
   useEffect(() => {
     if (!containerRef.current) return
 
+    /** false tras cleanup: evita IPC / rAF / scroll sobre xterm disposed. */
+    let termAlive = true
+
     userLineDraftRef.current = ''
 
     // Use configRef.current to get the LATEST config at mount time (avoids
@@ -615,7 +632,11 @@ export const TerminalPane: React.FC<Props> = ({
     })
 
     const fit = new FitAddon()
-    const links = new WebLinksAddon()
+    const links = new WebLinksAddon((_ev, uri) => {
+      void window.api.openExternalUrl(uri).then(r => {
+        if (!r.ok) console.warn('[openExternalUrl]', r.error)
+      })
+    })
     const serialize = new SerializeAddon()
     term.loadAddon(fit)
     term.loadAddon(links)
@@ -642,20 +663,27 @@ export const TerminalPane: React.FC<Props> = ({
     serializeAddonRef.current = serialize
 
     const updateTerminalScrollDown = (): void => {
-      const buf = term.buffer.active
-      if (buf.type !== 'normal') {
+      if (!termAlive || termRef.current !== term) return
+      try {
+        const buf = term.buffer.active
+        if (buf.type !== 'normal') {
+          setTerminalScrollDownVisible(false)
+          return
+        }
+        setTerminalScrollDownVisible(buf.viewportY < buf.baseY)
+      } catch {
         setTerminalScrollDownVisible(false)
-        return
       }
-      setTerminalScrollDownVisible(buf.viewportY < buf.baseY)
     }
 
     /** Rueda / barra del viewport: xterm usa scrollLines(..., suppressScrollEvent: true) y NO dispara `term.onScroll`. */
     let scrollIndicatorRaf = 0
     const scheduleScrollDownIndicator = (): void => {
+      if (!termAlive || termRef.current !== term) return
       if (scrollIndicatorRaf !== 0) return
       scrollIndicatorRaf = requestAnimationFrame(() => {
         scrollIndicatorRaf = 0
+        if (!termAlive || termRef.current !== term) return
         updateTerminalScrollDown()
       })
     }
@@ -669,14 +697,17 @@ export const TerminalPane: React.FC<Props> = ({
     viewportEl?.addEventListener('scroll', scheduleScrollDownIndicator, { passive: true })
 
     /** Evita refresh() sobre terminal disposed / distinta instancia (StrictMode, cambio de pestaña). */
-    let termAlive = true
     let repaintRaf = 0
     const scheduleTerminalCanvasRepaint = (): void => {
-      if (!termAlive || repaintRaf !== 0) return
+      if (!termAlive || termRef.current !== term || repaintRaf !== 0) return
       repaintRaf = requestAnimationFrame(() => {
         repaintRaf = 0
-        if (!termAlive || term.rows < 1) return
-        term.refresh(0, term.rows - 1)
+        if (!termAlive || termRef.current !== term || term.rows < 1) return
+        try {
+          term.refresh(0, term.rows - 1)
+        } catch {
+          /* dispose / dimensions */
+        }
       })
     }
 
@@ -782,14 +813,22 @@ export const TerminalPane: React.FC<Props> = ({
     term.onTitleChange(title => { if (title && isActivePaneRef.current) onTitleChange(title) })
 
     const resizeObs = new ResizeObserver(() => {
-      fitTerminalPreserveScroll(term, fit)
-      window.api.ptyResize(sessionId, term.cols, term.rows)
-      updateTerminalScrollDown()
+      if (!termAlive || termRef.current !== term) return
+      try {
+        fitTerminalPreserveScroll(term, fit)
+        const cols = Math.max(1, term.cols)
+        const rows = Math.max(1, term.rows)
+        window.api.ptyResize(sessionId, cols, rows)
+        updateTerminalScrollDown()
+      } catch {
+        /* syncScrollArea / dimensions durante resize o dispose */
+      }
     })
     if (containerRef.current) resizeObs.observe(containerRef.current)
 
     // Suscribirse ANTES de ptyCreate: la salida inicial del shell no se pierde por carrera IPC.
     const unsubData = window.api.onPtyData(sessionId, data => {
+      if (!termAlive || termRef.current !== term) return
       writePtyDataWithFollowScroll(term, data, scheduleTerminalCanvasRepaint)
       scheduleScrollbackSave()
       // Mientras haya salida del PTY, el proceso sigue activo: resetear el timer de silencio
@@ -803,13 +842,37 @@ export const TerminalPane: React.FC<Props> = ({
       }
     })
     const unsubExit = window.api.onPtyExit(sessionId, code => {
+      if (!termAlive || termRef.current !== term) return
       writePtyDataWithFollowScroll(
         term,
         `\r\n\x1b[2m[proceso terminado — código ${code}]\x1b[0m\r\n`,
         scheduleTerminalCanvasRepaint,
       )
+      // Sin proceso, ptyWrite no hace nada → no hay eco en xterm; el onData del renderer
+      // sigue alimentando sugerencias. Re-lanzar shell en el mismo sessionId si el panel sigue montado.
+      void window.api.getSessionCwd(sessionId).then(cwd => {
+        const dir = cwd.trim()
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!termAlive || termRef.current !== term) return
+            const host = containerRef.current
+            if (!host?.isConnected) return
+            try {
+              window.api.ptyCreate(sessionId, dir || undefined)
+              fitTerminalPreserveScroll(term, fit)
+              const cols = Math.max(1, term.cols)
+              const rows = Math.max(1, term.rows)
+              window.api.ptyResize(sessionId, cols, rows)
+            } catch {
+              /* xterm / PTY carrera */
+            }
+            scheduleTerminalCanvasRepaint()
+          })
+        })
+      })
     })
     const unsubErr = window.api.onPtyError(sessionId, message => {
+      if (!termAlive || termRef.current !== term) return
       writePtyDataWithFollowScroll(
         term,
         `\r\n\x1b[31m${message}\x1b[0m\r\n`,
@@ -818,7 +881,7 @@ export const TerminalPane: React.FC<Props> = ({
     })
 
     window.api.ptyCreate(sessionId, initialPtyCwd?.trim() || undefined)
-    window.api.ptyResize(sessionId, term.cols, term.rows)
+    window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
 
     return () => {
       termAlive = false
@@ -878,7 +941,11 @@ export const TerminalPane: React.FC<Props> = ({
     requestAnimationFrame(() => {
       const t = termRef.current
       if (!t || t.rows < 1 || t !== term) return
-      t.refresh(0, t.rows - 1)
+      try {
+        t.refresh(0, t.rows - 1)
+      } catch {
+        /* dimensions */
+      }
     })
   }, [config.themeId])
 
@@ -888,7 +955,7 @@ export const TerminalPane: React.FC<Props> = ({
     if (term && fit) {
       term.options.fontSize = config.fontSize
       fitTerminalPreserveScroll(term, fit)
-      window.api.ptyResize(sessionId, term.cols, term.rows)
+      window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
     }
   }, [config.fontSize, sessionId])
 
@@ -898,7 +965,7 @@ export const TerminalPane: React.FC<Props> = ({
         const term = termRef.current!
         const fit = fitRef.current!
         fitTerminalPreserveScroll(term, fit)
-        window.api.ptyResize(sessionId, term.cols, term.rows)
+        window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
         term.focus()
       }, 10)
     }
@@ -910,7 +977,7 @@ export const TerminalPane: React.FC<Props> = ({
       const term = termRef.current!
       const fit = fitRef.current!
       fitTerminalPreserveScroll(term, fit)
-      window.api.ptyResize(sessionId, term.cols, term.rows)
+      window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
     }, 60)
     return () => clearTimeout(t)
   }, [aiExpanded, tabActive, isActivePane, sessionId])
@@ -1046,25 +1113,44 @@ export const TerminalPane: React.FC<Props> = ({
         } as React.CSSProperties
       }
     >
-      {paneToolbar?.onClosePane && tabActive && isActivePane && shellOrToolbarFocused && (
+      {tabActive && (
         <div className="pane-toolbar" onMouseDown={onTerminalChromePointerDown}>
           <button
             type="button"
             tabIndex={-1}
-            className="pane-toolbar-btn pane-toolbar-btn--close terminal-chrome-btn"
-            title="Cerrar este panel"
+            className="pane-toolbar-btn pane-toolbar-btn--folder terminal-chrome-btn"
+            title="Abrir carpeta de esta terminal en el Finder"
+            aria-label="Abrir carpeta de esta terminal en el Finder"
             onMouseDown={onTerminalChromePointerDown}
             onClick={() => {
               onRequestPaneFocusRef.current?.()
-              setConfirmClosePaneOpen(true)
+              void openThisPaneFolderInFinder()
               queueMicrotask(() => { termRef.current?.focus() })
             }}
           >
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
           </button>
+          {paneToolbar?.onClosePane && (
+            <button
+              type="button"
+              tabIndex={-1}
+              className="pane-toolbar-btn pane-toolbar-btn--close terminal-chrome-btn"
+              title="Cerrar este panel"
+              onMouseDown={onTerminalChromePointerDown}
+              onClick={() => {
+                onRequestPaneFocusRef.current?.()
+                setConfirmClosePaneOpen(true)
+                queueMicrotask(() => { termRef.current?.focus() })
+              }}
+            >
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          )}
         </div>
       )}
       {/* Terminal body */}

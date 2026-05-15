@@ -24,6 +24,16 @@ export const IPC = {
   LIST_CWD_DIRS: 'cdRecent:listCwdDirs',
   /** Renderer → main: abre una carpeta en Finder */
   OPEN_FOLDER: 'shell:openFolder',
+  /** Renderer → main (invoke): abrir URL externa (http(s) / spotify:); playlists web → app si hay cliente */
+  OPEN_EXTERNAL_URL: 'shell:openExternalUrl',
+  /** Renderer → main (invoke): ¿cliente Spotify de escritorio instalado? */
+  SPOTIFY_DESKTOP_INSTALLED: 'spotify:desktopInstalled',
+  /** Renderer → main (invoke): reproducir playlist por ID (22 chars) */
+  SPOTIFY_PLAY_PLAYLIST: 'spotify:playPlaylist',
+  SPOTIFY_PAUSE: 'spotify:pause',
+  SPOTIFY_PLAY: 'spotify:play',
+  /** Renderer → main (invoke): estado aproximado de reproducción */
+  SPOTIFY_GET_STATE: 'spotify:getState',
   /** Renderer → main: listado del cwd de la sesión + package.json (contexto IA) */
   PROJECT_AI_CONTEXT_GET: 'project:aiContext',
   /** Renderer → main (invoke): lee `.ai-terminal/agent.md` del cwd de la sesión; null si no existe */

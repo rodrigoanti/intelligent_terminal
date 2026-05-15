@@ -59,13 +59,6 @@ export const TabBar: React.FC<Props> = ({
     setEditingTabId(null)
   }
 
-  const openFolder = async (tab: TabSession): Promise<void> => {
-    try {
-      const cwd = await window.api.getSessionCwd(tab.activePaneId)
-      if (cwd) window.api.openFolder(cwd)
-    } catch { /* ignore */ }
-  }
-
   return (
     <>
       <div className="tabbar">
@@ -107,18 +100,6 @@ export const TabBar: React.FC<Props> = ({
                 onClick={() => { if (!isEditing) onSelect(tab.id) }}
                 title={isEditing ? undefined : tab.title}
               >
-                {/* Folder button */}
-                <button
-                  type="button"
-                  className="tab-folder-btn"
-                  onClick={e => { e.stopPropagation(); void openFolder(tab) }}
-                  title="Abrir carpeta en Finder"
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                  </svg>
-                </button>
-
                 {/* Terminal icon / spinner de actividad */}
                 {busyTabIds.has(tab.id) ? (
                   <span className="tab-spinner" aria-label="Ejecutando" aria-hidden="true" />

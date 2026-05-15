@@ -40,7 +40,7 @@ async function buildShellFollowUp(
   const lines: string[] = []
   if (policy === 'off') {
     lines.push(
-      'Automatic shell execution is **disabled** in settings. No RUN block commands were executed.',
+      'Shell policy is **off**. No RUN block commands were executed.',
     )
     for (const c of commands) lines.push(`- skipped: \`${c}\``)
     return lines.join('\n')

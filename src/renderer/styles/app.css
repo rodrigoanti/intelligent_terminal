@@ -18,8 +18,8 @@
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   flex-shrink: 0;
-  padding: 0 12px;
-  gap: 8px;
+  padding: 0 8px;
+  gap: 4px;
 }
 
 .titlebar-drag {
@@ -31,16 +31,16 @@
 .titlebar-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   -webkit-app-region: no-drag;
 }
 
 .theme-picker-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   max-width: 200px;
-  padding: 4px 8px;
+  padding: 2px 6px;
   background: transparent;
   border: none;
   border-radius: calc(var(--radius) / 2);
@@ -85,8 +85,8 @@
 .icon-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
+  gap: 3px;
+  padding: 2px 6px;
   border-radius: calc(var(--radius) / 2);
   color: var(--text-muted);
   font-size: 12px;
@@ -104,7 +104,7 @@
 }
 
 .font-size-btn {
-  padding: 4px 7px;
+  padding: 2px 6px;
 }
 
 .font-size-btn:disabled {

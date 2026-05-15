@@ -1,0 +1,84 @@
+.titlebar-music {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 3px;
+  flex-shrink: 0;
+}
+
+.titlebar-music-mood {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titlebar-music-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: calc(var(--radius) / 2);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.titlebar-music-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.titlebar-music-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.titlebar-music-btn--gear {
+  width: 28px;
+}
+
+.titlebar-music-btn.titlebar-music-btn--mood {
+  width: auto;
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.titlebar-music-btn--mood .titlebar-music-mood {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.titlebar-music-spectrum {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  height: 14px;
+  padding: 0 1px 0;
+  pointer-events: none;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.titlebar-music-spectrum--idle {
+  opacity: 0.58;
+}
+
+.titlebar-music-spectrum__bar {
+  display: block;
+  width: 1.5px;
+  height: 11px;
+  transform-origin: bottom center;
+  transform: scaleY(0.12);
+  border-radius: 0.5px;
+  background: color-mix(in srgb, var(--accent) 50%, var(--text-muted));
+}

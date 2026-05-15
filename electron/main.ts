@@ -48,6 +48,14 @@ import {
   initSessionCwd,
   recordCdFromUserLine,
 } from './cdRecentCapture'
+import {
+  getPlaybackState,
+  isSpotifyDesktopInstalled,
+  pausePlayback,
+  playPlaylist,
+  resumePlayback,
+  tryResolveSpotifyPlaylistUriFromHttpUrl,
+} from './spotifyNative'
 
 function preloadPath(): string {
   return join(__dirname, '../preload/preload.js')
@@ -104,13 +112,14 @@ function sendToWindow(windowId: number, channel: string, ...args: unknown[]): vo
 
 function killPty(sessionId: string): void {
   const entry = ptySessions.get(sessionId)
-  if (!entry) return
-  try {
-    entry.proc.kill()
-  } catch {
-    /* ignore */
+  if (entry) {
+    try {
+      entry.proc.kill()
+    } catch {
+      /* ignore */
+    }
+    ptySessions.delete(sessionId)
   }
-  ptySessions.delete(sessionId)
   clearSessionCdState(sessionId)
 }
 
@@ -192,6 +201,65 @@ function registerIpc(): void {
   ipcMain.on(IPC.OPEN_FOLDER, (_e, folderPath: string) => {
     void shell.openPath(folderPath)
   })
+
+  ipcMain.handle(IPC.OPEN_EXTERNAL_URL, async (_e, urlStr: unknown) => {
+    if (typeof urlStr !== 'string' || !urlStr.trim()) {
+      return { ok: false as const, error: 'URL vacía' }
+    }
+    const raw = urlStr.trim()
+    try {
+      const u = new URL(raw)
+      const isHttp = u.protocol === 'http:' || u.protocol === 'https:'
+      const isSpotifyScheme = u.protocol === 'spotify:'
+      if (!isHttp && !isSpotifyScheme) {
+        return { ok: false as const, error: 'Solo se permiten http(s) y spotify:' }
+      }
+      if (isHttp) {
+        const spotifyUri = tryResolveSpotifyPlaylistUriFromHttpUrl(raw)
+        if (spotifyUri && (await isSpotifyDesktopInstalled())) {
+          await shell.openExternal(spotifyUri)
+          return { ok: true as const }
+        }
+      }
+      await shell.openExternal(raw)
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IPC.SPOTIFY_DESKTOP_INSTALLED, () => isSpotifyDesktopInstalled())
+
+  ipcMain.handle(IPC.SPOTIFY_PLAY_PLAYLIST, async (_e, id: unknown) => {
+    if (typeof id !== 'string') return { ok: false as const, error: 'ID inválido' }
+    try {
+      await playPlaylist(id)
+      return { ok: true as const }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle(IPC.SPOTIFY_PAUSE, async () => {
+    try {
+      await pausePlayback()
+      return { ok: true as const }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle(IPC.SPOTIFY_PLAY, async () => {
+    try {
+      await resumePlayback()
+      return { ok: true as const }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle(IPC.SPOTIFY_GET_STATE, () => getPlaybackState())
 
   ipcMain.handle(IPC.PROJECT_AI_CONTEXT_GET, (_e, sessionId: string) => {
     return gatherProjectAiContextForCwd(projectRootForSession(sessionId))
@@ -298,7 +366,8 @@ function registerIpc(): void {
       })
       proc.onExit(({ exitCode }) => {
         ptySessions.delete(sessionId)
-        clearSessionCdState(sessionId)
+        // No borrar cwd aquí: el renderer puede llamar a pty:create de nuevo con el mismo
+        // sessionId y GET_SESSION_CWD para reenganchar un shell. killPty() sí limpia el cwd.
         sendToWindow(windowId, IPC.PTY_EXIT, sessionId, exitCode)
       })
     } catch (err) {
@@ -349,6 +418,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: false,
     },
   })
 

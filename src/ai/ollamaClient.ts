@@ -172,7 +172,7 @@ const MAX_BOOTSTRAP_LISTING = 8_000
 function agentModeShellSuffix(shellPolicy: AgentShellPolicy): string {
   if (shellPolicy === 'off') {
     return (
-      '\n\n**Shell:** automatic command execution is **disabled** in settings. ' +
+      '\n\n**Shell:** command execution policy is **off** (no RUN blocks will be executed). ' +
       'Do not use RUN blocks; tell the user what to run manually if needed.\n'
     )
   }

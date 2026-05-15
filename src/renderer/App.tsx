@@ -6,6 +6,7 @@ import { TabBar } from './components/TabBar'
 import { TerminalPane } from './terminal/TerminalPane'
 import { SettingsModal } from './components/SettingsModal'
 import { ThemePickerModal } from './components/ThemePickerModal'
+import { TitlebarMusicControls } from './components/TitlebarMusicControls'
 import './styles/app.css'
 
 export interface TabSession {
@@ -383,6 +384,17 @@ export const App: React.FC = () => {
     setConfig(cfg)
   }, [])
 
+  /** Devuelve foco al xterm de la pestaña activa (p. ej. tras modales o botones con tabIndex -1). */
+  const focusActiveTerminalTextarea = useCallback((): void => {
+    queueMicrotask(() => {
+      document
+        .querySelector<HTMLTextAreaElement>(
+          '.tab-terminal-group--active .xterm-helper-textarea',
+        )
+        ?.focus()
+    })
+  }, [])
+
   const patchConfig = useCallback(async (partial: Partial<AppConfig>) => {
     const r = await window.api.setConfig(partial)
     if (r.ok) {
@@ -493,8 +505,14 @@ export const App: React.FC = () => {
       <div className="titlebar">
         <div className="titlebar-drag" />
         <div className="titlebar-actions">
+          <TitlebarMusicControls
+            config={config}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
           {/* Font size buttons */}
           <button
+            type="button"
+            tabIndex={-1}
             className="icon-btn font-size-btn"
             onClick={() => changeFontSize(-1)}
             disabled={(config.fontSize ?? 13) <= MIN_FONT}
@@ -507,6 +525,8 @@ export const App: React.FC = () => {
             </svg>
           </button>
           <button
+            type="button"
+            tabIndex={-1}
             className="icon-btn font-size-btn"
             onClick={() => changeFontSize(1)}
             disabled={(config.fontSize ?? 13) >= MAX_FONT}
@@ -523,6 +543,7 @@ export const App: React.FC = () => {
           {/* Selector de tema (modal con vista previa) */}
           <button
             type="button"
+            tabIndex={-1}
             className="theme-picker-trigger"
             onClick={() => setThemePickerOpen(true)}
             title="Elegir tema"
@@ -542,7 +563,7 @@ export const App: React.FC = () => {
             <span className="theme-picker-trigger-label">{getTheme(config.themeId).name}</span>
           </button>
 
-          <button className="icon-btn" onClick={() => setSettingsOpen(true)} title="Ajustes">
+          <button type="button" tabIndex={-1} className="icon-btn" onClick={() => setSettingsOpen(true)} title="Ajustes">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3"/>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -613,7 +634,10 @@ export const App: React.FC = () => {
         <SettingsModal
           config={config}
           onSave={handleConfigSaved}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsOpen(false)
+            focusActiveTerminalTextarea()
+          }}
         />
       )}
 
@@ -621,7 +645,10 @@ export const App: React.FC = () => {
         open={themePickerOpen}
         currentThemeId={config.themeId}
         onSelectTheme={handleThemeChange}
-        onClose={() => setThemePickerOpen(false)}
+        onClose={() => {
+          setThemePickerOpen(false)
+          focusActiveTerminalTextarea()
+        }}
       />
     </div>
   )

@@ -67,6 +67,14 @@
   gap: 3px;
 }
 
+.terminal-pane--inactive-pane .pane-toolbar {
+  opacity: 0.72;
+}
+
+.terminal-pane--inactive-pane .pane-toolbar:hover {
+  opacity: 1;
+}
+
 /* Botones flotantes del panel: compactos, estilo terminal moderno */
 .terminal-chrome-btn {
   --tcb-size: 22px;
@@ -98,6 +106,10 @@
   opacity: 0.85;
 }
 
+
+.pane-toolbar-btn--folder:hover {
+  color: var(--accent);
+}
 
 .pane-toolbar-btn:hover {
   color: var(--accent);

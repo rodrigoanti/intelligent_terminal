@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import type { AppConfig, AgentShellPolicy } from '@shared/configSchema'
-import { validateConfig, mergeWithDefaults } from '@shared/configSchema'
+import type { AppConfig } from '@shared/configSchema'
+import { validateConfig, mergeWithDefaults, parseSpotifyPlaylistId } from '@shared/configSchema'
+import { MUSIC_MOODS } from '@shared/musicMoods'
 import { fetchOllamaModelNames } from '@ai/ollamaModels'
 import { TerminalModal } from './TerminalModal'
 import './SettingsModal.css'
@@ -16,9 +17,8 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     ollamaBaseURL: config.ollamaBaseURL,
     defaultModel: config.defaultModel,
     maxContextLines: String(config.maxContextLines),
-    agentMode: config.agentMode ?? false,
-    agentShellPolicy: (config.agentShellPolicy ?? 'off') as AgentShellPolicy,
     thinkingMode: config.thinkingMode ?? false,
+    musicPlaylistIdsByMood: { ...(config.musicPlaylistIdsByMood ?? {}) } as Record<string, string>,
   })
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -64,15 +64,37 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     setErrors([])
   }
 
+  function updatePlaylistMood(moodId: string, value: string): void {
+    setForm(prev => ({
+      ...prev,
+      musicPlaylistIdsByMood: { ...prev.musicPlaylistIdsByMood, [moodId]: value },
+    }))
+    setErrors([])
+  }
+
   async function handleSave(): Promise<void> {
+    const musicPlaylistIdsByMood: Record<string, string> = { ...(config.musicPlaylistIdsByMood ?? {}) }
+    for (const m of MUSIC_MOODS) {
+      const raw = (form.musicPlaylistIdsByMood[m.id] ?? '').trim()
+      if (!raw) {
+        delete musicPlaylistIdsByMood[m.id]
+        continue
+      }
+      const id = parseSpotifyPlaylistId(raw)
+      if (!id) {
+        setErrors([`«${m.label}»: introduce un ID de 22 caracteres o un enlace open.spotify.com/playlist/…`])
+        return
+      }
+      musicPlaylistIdsByMood[m.id] = id
+    }
+
     const updated = mergeWithDefaults({
       ...config,
       ollamaBaseURL: form.ollamaBaseURL.trim(),
       defaultModel: form.defaultModel.trim(),
       maxContextLines: Number(form.maxContextLines),
-      agentMode: form.agentMode,
-      agentShellPolicy: form.agentShellPolicy,
       thinkingMode: form.thinkingMode,
+      musicPlaylistIdsByMood,
     })
     const errs = validateConfig(updated)
     if (errs.length) { setErrors(errs); return }
@@ -187,41 +209,40 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
               <span className="settings-hint">Cuántas líneas del terminal se envían al modelo como contexto.</span>
             </label>
 
-            <label className="settings-label settings-label--checkbox">
-              <span className="settings-checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={form.agentMode}
-                  onChange={e => setForm(prev => ({ ...prev, agentMode: e.target.checked }))}
-                />
-                Modo agente (lectura/escritura de archivos)
-              </span>
-              <span className="settings-hint">
-                Si está activo, el chat puede leer y modificar archivos bajo el directorio de trabajo de la sesión,
-                usando bloques especiales en las respuestas del modelo (solo con rutas relativas al proyecto).
-              </span>
-            </label>
+            <p className="settings-hint settings-hint--block">
+              Modo agente y ejecución de comandos shell se controlan en la cabecera del panel de IA de cada terminal
+              (interruptor «agente» y menú de política shell).
+            </p>
+          </section>
 
-            <label className="settings-label">
-              Comandos del agente (shell)
-              <select
-                className="model-select"
-                value={form.agentShellPolicy}
-                disabled={!form.agentMode}
-                onChange={e =>
-                  setForm(prev => ({ ...prev, agentShellPolicy: e.target.value as AgentShellPolicy }))
-                }
-                aria-label="Política de ejecución de comandos del agente"
-              >
-                <option value="off">No ejecutar (solo archivos / texto)</option>
-                <option value="ask">Preguntar antes de cada comando</option>
-                <option value="always">Ejecutar siempre (sin confirmación)</option>
-              </select>
-              <span className="settings-hint">
-                Los comandos se ejecutan en el cwd de la sesión (no en el PTY visible), con tiempo máximo y límite de salida.
-                «Siempre» es peligroso en carpetas que no controlas al 100%.
-              </span>
-            </label>
+          <section className="settings-section">
+            <h3 className="settings-section-title">Spotify (barra de título)</h3>
+            <p className="settings-hint settings-hint--block">
+              IDs de playlist (22 caracteres de{' '}
+              <code>open.spotify.com/playlist/…</code>). Requiere Spotify de escritorio. El nombre del mood avanza al
+              pulsarlo y la reproducción se pausa; pulsa play para reproducir la playlist del mood mostrado.
+            </p>
+            <div className="settings-spotify-grid">
+              {MUSIC_MOODS.map(m => (
+                <div key={m.id} className="settings-spotify-row">
+                  <label className="settings-label settings-label--compact" htmlFor={`settings-pl-${m.id}`}>
+                    {m.label}
+                    <input
+                      id={`settings-pl-${m.id}`}
+                      type="text"
+                      placeholder="p. ej. 37i9dQZF1DX4sWSpwq3LiO"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={form.musicPlaylistIdsByMood[m.id] ?? ''}
+                      onChange={e => updatePlaylistMood(m.id, e.target.value)}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+            <span className="settings-hint">
+              Puedes pegar el ID de 22 caracteres o el enlace completo de la playlist; al guardar se guarda solo el ID.
+            </span>
           </section>
 
           <section className="settings-section">
