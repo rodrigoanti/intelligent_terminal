@@ -8,124 +8,47 @@
   position: relative;
 }
 
-/* Asistente IA: ancho completo del pane, pegado abajo (sticky respecto al pane). */
+/* Dock IA: posición absoluta encima de la terminal; expandido ocupa ~85% del alto del pane */
 .terminal-pane-ai-dock {
-  flex-shrink: 0;
-  width: 100%;
-  min-height: 0;
-  max-height: 50%;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  z-index: 70;
   display: flex;
   flex-direction: column;
-  position: sticky;
-  bottom: 0;
-  z-index: 45;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-  /* Escala acorde a la fuente de la terminal. `zoom` aquí rompe scroll/rueda en `.ai-messages` (Chromium). */
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
   font-size: calc(12px * var(--terminal-pane-ai-chat-zoom, 1));
+  pointer-events: none;
 }
 
 .terminal-pane-ai-dock--collapsed {
+  top: auto;
+  height: auto;
   max-height: none;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
+  box-shadow:
+    0 -6px 18px color-mix(in srgb, black 34%, transparent),
+    0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent);
 }
 
-/* Chat IA a pantalla completa en el panel (⌘⌥I): el dock ocupa el alto; el cuerpo de la terminal se colapsa. */
-.terminal-pane--ai-maximized .terminal-pane-body {
-  flex: 0 1 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.terminal-pane--ai-maximized .terminal-pane-ai-dock {
-  flex: 1 1 auto;
-  min-height: 0;
+.terminal-pane-ai-dock--expanded {
+  /* 100% − 15% = 85% del alto del pane (referencia: .terminal-pane) */
+  top: 15%;
+  bottom: 0;
+  height: auto;
   max-height: none;
-}
-
-.ai-dock-body {
-  flex: 1 1 auto;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.ai-dock-body--hidden {
-  display: none;
-}
-
-/* Barra colapsada: misma línea visual que la cabecera del panel IA */
-.ai-dock-collapsed-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 4px 10px 4px 8px;
-  text-align: left;
-  font-family: var(--font-ui);
-  font-size: 0.9167em;
-  line-height: 1.25;
-  letter-spacing: 0.02em;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--accent) 10%, color-mix(in srgb, var(--surface) 42%, var(--bg)));
-  border: none;
-  border-left: 3px solid var(--accent);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
-  cursor: pointer;
-  transition: color 0.12s, background 0.12s;
-}
-
-.ai-dock-collapsed-bar:hover {
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--accent) 14%, color-mix(in srgb, var(--surface) 50%, var(--bg)));
-}
-
-.ai-dock-collapsed-title {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
-  font-weight: 600;
-}
-
-.ai-dock-collapsed-prompt {
-  color: var(--accent);
-  opacity: 0.95;
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-weight: 700;
-}
-
-.ai-dock-collapsed-label {
-  text-transform: lowercase;
-  color: var(--text);
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.ai-dock-collapsed-model-badge {
-  font-size: 0.8333em;
-  font-weight: 500;
-  font-family: var(--font-mono);
-  color: color-mix(in srgb, var(--accent) 35%, var(--text-muted));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  max-width: min(52vw, 220px);
-  padding: 1px 8px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-}
-
-.ai-dock-collapsed-hint {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 0.8333em;
-  color: color-mix(in srgb, var(--accent) 55%, var(--text-muted));
-  opacity: 0.9;
+  border-radius: var(--radius, 8px) var(--radius, 8px) 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  box-shadow:
+    0 -1px 0 color-mix(in srgb, var(--border) 50%, transparent),
+    0 -10px 32px color-mix(in srgb, black 42%, transparent),
+    0 -22px 56px color-mix(in srgb, black 26%, transparent);
 }
 
 .terminal-pane--inactive-pane .terminal-pane-main,
@@ -136,109 +59,79 @@
 
 .pane-toolbar {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: 5px;
+  right: 6px;
   z-index: 40;
   display: flex;
   flex-direction: row;
-  gap: 4px;
+  gap: 3px;
 }
 
-.pane-toolbar-btn {
+/* Botones flotantes del panel: compactos, estilo terminal moderno */
+.terminal-chrome-btn {
+  --tcb-size: 22px;
+  width: var(--tcb-size);
+  height: var(--tcb-size);
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-  color: var(--text-muted);
-  opacity: 0.92;
+  border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  color: color-mix(in srgb, var(--text-muted) 88%, var(--text));
+  opacity: 0.88;
   cursor: pointer;
-  transition: color 0.12s, opacity 0.12s, background 0.12s, border-color 0.12s;
+  transition: color 0.1s ease, opacity 0.1s ease, background 0.1s ease, border-color 0.1s ease;
 }
 
-.pane-toolbar-btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--border);
-  color: var(--accent);
+.terminal-chrome-btn:hover {
   opacity: 1;
+  background: color-mix(in srgb, var(--surface) 35%, transparent);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  color: var(--text);
+}
+
+.terminal-chrome-btn:active {
+  opacity: 0.85;
+}
+
+
+.pane-toolbar-btn:hover {
+  color: var(--accent);
 }
 
 .pane-toolbar-btn--close:hover {
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 12%, var(--surface-hover));
-  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
-  opacity: 1;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 22%, var(--border));
 }
 
 /* + nueva terminal a la derecha: esquina inferior del área xterm */
 .terminal-split-corner-btn {
   position: absolute;
-  bottom: 6px;
-  right: 8px;
+  bottom: calc(5px + var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap, 0px));
+  right: 6px;
   z-index: 55;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  margin: 0;
-  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-  color: var(--text-muted);
-  opacity: 0.92;
-  cursor: pointer;
-  transition: color 0.12s, opacity 0.12s, background 0.12s, border-color 0.12s;
 }
 
 .terminal-split-corner-btn:hover {
   color: var(--accent);
-  opacity: 1;
-  background: var(--surface-hover);
-  border-color: var(--border);
-}
-
-.terminal-split-corner-btn:active {
-  opacity: 0.88;
 }
 
 /* Flecha: bajar al final del scrollback (solo visible si hay salida más reciente abajo) */
 .terminal-scroll-down-btn {
   position: absolute;
-  bottom: 42px;
-  right: 8px;
+  /* apilado sobre el botón + (22px + 4px de separación) */
+  bottom: calc(31px + var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap, 0px));
+  right: 6px;
   z-index: 56;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  margin: 0;
-  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
-  color: var(--text-muted);
-  opacity: 0.95;
-  cursor: pointer;
-  box-shadow: 0 1px 4px color-mix(in srgb, black 22%, transparent);
-  transition: color 0.12s, opacity 0.12s, background 0.12s, border-color 0.12s;
 }
 
 .terminal-scroll-down-btn:hover {
   color: var(--accent);
-  opacity: 1;
-  background: var(--surface-hover);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-}
-
-.terminal-scroll-down-btn:active {
-  opacity: 0.88;
 }
 
 
@@ -255,11 +148,14 @@
 
 /* Área del xterm */
 .terminal-pane-main {
+  --terminal-above-dock-gap: 6px;
   flex: 1;
   min-height: 0;
   position: relative;
   display: flex;
   flex-direction: column;
+  /* Reserva del overlay IA + un poco de aire sobre la barra colapsada */
+  padding-bottom: calc(var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap));
 }
 
 .terminal-container {

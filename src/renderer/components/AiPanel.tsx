@@ -153,8 +153,10 @@ interface Props {
   getTerminalContext: () => string
   /** Ctrl+U + comando en el PTY (misma ruta que teclear en xterm) */
   onInjectLine: (cmd: string) => void
-  /** Oculta el panel expandido (la barra con modelo sigue visible) */
+  /** Oculta el panel expandido (la misma barra queda en modo compacto) */
   onCollapse: () => void
+  /** Abre el panel desde la barra compacta (misma cabecera que al expandir) */
+  onExpand: () => void
   /** Panel visible; al pasar a `true` se enfoca el campo de mensaje */
   expanded: boolean
   /** Persistir cambios puntuales de configuración (p. ej. modo agente) */
@@ -162,7 +164,7 @@ interface Props {
 }
 
 export const AiPanel: React.FC<Props> = ({
-  config, sessionId, selectedText, getTerminalContext, onInjectLine, onCollapse, expanded, onConfigPatch,
+  config, sessionId, selectedText, getTerminalContext, onInjectLine, onCollapse, onExpand, expanded, onConfigPatch,
 }) => {
   const [messages, setMessages] = useState<ChatEntry[]>([])
   const [interactionsLog, setInteractionsLog] = useState<string[]>([])
@@ -176,7 +178,7 @@ export const AiPanel: React.FC<Props> = ({
   /** Evita solapar peticiones (doble clic / carreras antes de que `loading` se pinte en React). */
   const aiRequestInFlightRef = useRef(false)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const aiInputId = useId()
   /** `null` = primer render; evita enfocar al abrir la app con IA ya expandida */
   const prevExpandedRef = useRef<boolean | null>(null)
@@ -595,8 +597,11 @@ export const AiPanel: React.FC<Props> = ({
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend() }
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      void handleSend()
+    }
   }
 
   function handleStop(): void {
@@ -641,17 +646,37 @@ export const AiPanel: React.FC<Props> = ({
     onCollapse()
   }
 
+  function handleChromeClick(e: React.MouseEvent<HTMLDivElement>): void {
+    if (expanded) handleHeaderClick(e)
+    else onExpand()
+  }
+
+  function handleChromeKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
+    if (expanded) handleHeaderKeyDown(e)
+    else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onExpand()
+    }
+  }
+
   return (
     <>
-    <div className="ai-panel">
+    <div className={['ai-panel', expanded ? 'ai-panel--dock-expanded' : 'ai-panel--dock-collapsed'].filter(Boolean).join(' ')}>
+      {/*
+        Misma barra en colapsado y expandido: en compacto sin acciones ni subtítulo.
+      */}
       <div
-        className="ai-panel-header ai-panel-header--toggle"
+        className={[
+          'ai-panel-header',
+          'ai-panel-header--toggle',
+          expanded ? 'ai-panel-header--expanded-chrome' : 'ai-panel-header--compact-chrome',
+        ].filter(Boolean).join(' ')}
         role="button"
         tabIndex={0}
-        aria-expanded
-        aria-label="Ocultar panel de IA (clic en la barra)"
-        onClick={handleHeaderClick}
-        onKeyDown={handleHeaderKeyDown}
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Ocultar panel de IA (clic en la barra)' : 'Abrir panel de IA'}
+        onClick={handleChromeClick}
+        onKeyDown={handleChromeKeyDown}
       >
         <div className="ai-panel-header-main">
           <div className="ai-panel-header-top">
@@ -660,69 +685,70 @@ export const AiPanel: React.FC<Props> = ({
               <span className="ai-panel-name">ia</span>
               <span className="ai-model-badge">{config.defaultModel}</span>
             </div>
-            <div className="ai-panel-actions">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={config.agentMode === true}
-                aria-label="Modo agente"
-                disabled={!onConfigPatch}
-                className={`ai-panel-agent-toggle ai-agent-switch${config.agentMode ? ' ai-agent-switch--on' : ''}`}
-                title="Modo agente: lectura/escritura de archivos y (según ajustes) ejecución de comandos en el cwd de la sesión."
-                onClick={e => {
-                  e.stopPropagation()
-                  void onConfigPatch?.({ agentMode: !config.agentMode })
-                }}
-                onKeyDown={e => e.stopPropagation()}
-              >
-                <span className="ai-agent-switch__track" aria-hidden>
-                  <span className="ai-agent-switch__thumb" />
-                </span>
-                <span className="ai-panel-agent-label">agente</span>
-              </button>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={config.thinkingMode === true}
-                aria-label="Modo thinking"
-                disabled={!onConfigPatch}
-                className={`ai-panel-think-toggle ai-agent-switch${config.thinkingMode ? ' ai-agent-switch--on' : ''}`}
-                title="Modo thinking: el modelo razona internamente antes de responder. Solo funciona con modelos compatibles (qwen3, deepseek-r1, etc.)."
-                onClick={e => {
-                  e.stopPropagation()
-                  void onConfigPatch?.({ thinkingMode: !config.thinkingMode })
-                }}
-                onKeyDown={e => e.stopPropagation()}
-              >
-                <span className="ai-agent-switch__track" aria-hidden>
-                  <span className="ai-agent-switch__thumb" />
-                </span>
-                <span className="ai-panel-agent-label">think</span>
-              </button>
-              {messages.length > 0 && (
+            {expanded && (
+              <div className="ai-panel-actions">
                 <button
                   type="button"
-                  className="ai-panel-delete"
-                  onClick={e => { e.stopPropagation(); handleDeleteHistory() }}
-                  title="Borrar historial"
+                  role="switch"
+                  aria-checked={config.agentMode === true}
+                  aria-label="Modo agente"
+                  disabled={!onConfigPatch}
+                  className={`ai-panel-agent-toggle ai-agent-switch${config.agentMode ? ' ai-agent-switch--on' : ''}`}
+                  title="Modo agente: lectura/escritura de archivos y (según ajustes) ejecución de comandos en el cwd de la sesión."
+                  onClick={e => {
+                    e.stopPropagation()
+                    void onConfigPatch?.({ agentMode: !config.agentMode })
+                  }}
+                  onKeyDown={e => e.stopPropagation()}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6l-1 14H6L5 6"/>
-                    <path d="M10 11v6"/>
-                    <path d="M14 11v6"/>
-                    <path d="M9 6V4h6v2"/>
-                  </svg>
+                  <span className="ai-agent-switch__track" aria-hidden>
+                    <span className="ai-agent-switch__thumb" />
+                  </span>
+                  <span className="ai-panel-agent-label">agente</span>
                 </button>
-              )}
-            </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={config.thinkingMode === true}
+                  aria-label="Modo thinking"
+                  disabled={!onConfigPatch}
+                  className={`ai-panel-think-toggle ai-agent-switch${config.thinkingMode ? ' ai-agent-switch--on' : ''}`}
+                  title="Modo thinking: el modelo razona internamente antes de responder. Solo funciona con modelos compatibles (qwen3, deepseek-r1, etc.)."
+                  onClick={e => {
+                    e.stopPropagation()
+                    void onConfigPatch?.({ thinkingMode: !config.thinkingMode })
+                  }}
+                  onKeyDown={e => e.stopPropagation()}
+                >
+                  <span className="ai-agent-switch__track" aria-hidden>
+                    <span className="ai-agent-switch__thumb" />
+                  </span>
+                  <span className="ai-panel-agent-label">think</span>
+                </button>
+                {messages.length > 0 && (
+                  <button
+                    type="button"
+                    className="ai-panel-delete"
+                    onClick={e => { e.stopPropagation(); handleDeleteHistory() }}
+                    title="Borrar historial"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6l-1 14H6L5 6"/>
+                      <path d="M10 11v6"/>
+                      <path d="M14 11v6"/>
+                      <path d="M9 6V4h6v2"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-          <p className="ai-panel-tagline">
-            Salida lateral del shell: mismo cwd y sesión, otra vía al modelo.
-          </p>
         </div>
       </div>
 
+      {expanded && (
+      <div className="ai-panel-expanded-body">
       <div className="ai-messages" ref={messagesScrollRef}>
         {messages.length === 0 && (
           <div className="ai-chat-empty">
@@ -768,26 +794,31 @@ export const AiPanel: React.FC<Props> = ({
 
       <div className="ai-input-area">
         <label className="ai-input-shell" htmlFor={aiInputId}>
-          <span className="ai-input-prompt" aria-hidden>›</span>
-          <textarea
+          <span className="ai-input-prompt" aria-hidden="true">›</span>
+          <input
             id={aiInputId}
             ref={inputRef}
+            type="text"
             className="ai-input"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Escribe al modelo… (Enter envía · Shift+Enter línea nueva)"
-            rows={1}
+            placeholder="Mensaje al modelo…"
+            autoComplete="off"
+            spellCheck={false}
+            enterKeyHint="send"
             disabled={loading}
           />
         </label>
         <div className="ai-input-actions">
           {loading
-            ? <button className="ai-send-btn ai-stop-btn" onClick={handleStop}>Detener</button>
-            : <button className="ai-send-btn" onClick={() => void handleSend()} disabled={!input.trim()}>Enviar</button>
+            ? <button type="button" className="ai-send-btn ai-stop-btn" onClick={handleStop}>Detener</button>
+            : <button type="button" className="ai-send-btn" onClick={() => void handleSend()} disabled={!input.trim()}>Enviar</button>
           }
         </div>
       </div>
+      </div>
+      )}
     </div>
     {createPortal(
       <ConfirmTerminalModal
