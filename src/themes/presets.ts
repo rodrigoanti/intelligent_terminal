@@ -1220,52 +1220,6 @@ const lordOfTheRings: AppTheme = {
   },
 }
 
-/** Apple Liquid Glass — cromo translúcido + neutros fríos (vidrio vía CSS en theme-apple-liquid-glass.css) */
-const appleLiquidGlass: AppTheme = {
-  id: 'appleLiquidGlass',
-  name: 'Apple Liquid Glass',
-  vars: {
-    '--bg': '#0b0b0f',
-    '--bg-secondary': 'rgba(20, 20, 28, 0.55)',
-    '--surface': 'rgba(34, 34, 42, 0.58)',
-    '--surface-hover': 'rgba(44, 44, 54, 0.62)',
-    '--border': 'rgba(255, 255, 255, 0.1)',
-    '--text': '#f2f2f7',
-    '--text-muted': '#98989d',
-    '--accent': '#0a84ff',
-    '--accent-dim': '#0060c0',
-    '--danger': '#ff453a',
-    '--tab-active-bg': 'rgba(255, 255, 255, 0.09)',
-    '--tab-inactive-bg': 'transparent',
-    '--scrollbar': 'rgba(255, 255, 255, 0.16)',
-    '--radius': '12px',
-  },
-  xterm: {
-    background: '#0b0b0f',
-    foreground: '#ebebf5',
-    cursor: '#0a84ff',
-    cursorAccent: '#0b0b0f',
-    selectionBackground: '#0a84ff44',
-    selectionForeground: '#ffffff',
-    black: '#18181d',
-    red: '#ff453a',
-    green: '#30d158',
-    yellow: '#ffd60a',
-    blue: '#0a84ff',
-    magenta: '#bf5af2',
-    cyan: '#64d2ff',
-    white: '#ebebf5',
-    brightBlack: '#636366',
-    brightRed: '#ff6961',
-    brightGreen: '#4ade80',
-    brightYellow: '#ffe066',
-    brightBlue: '#64b5ff',
-    brightMagenta: '#da8fff',
-    brightCyan: '#8ae9ff',
-    brightWhite: '#ffffff',
-  },
-}
-
 const solarLight: AppTheme = {
   id: 'solarLight',
   name: 'Solarized Light',
@@ -1385,13 +1339,17 @@ export const THEMES: AppTheme[] = [
   avatar,
   jurassicPark,
   lordOfTheRings,
-  appleLiquidGlass,
   solarLight,
   githubLight,
 ]
 
 export function getTheme(id: string): AppTheme {
   return THEMES.find(t => t.id === id) ?? vscodeDark
+}
+
+/** Normaliza `themeId` persistido si apunta a un tema ya eliminado. */
+export function normalizeThemeId(id: string): string {
+  return THEMES.some(t => t.id === id) ? id : vscodeDark.id
 }
 
 function isLightTheme(t: AppTheme): boolean {

@@ -1,0 +1,156 @@
+.terminal-find-intro {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.terminal-find-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.terminal-find-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.terminal-find-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.terminal-find-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.terminal-find-submit {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.terminal-find-submit:hover {
+  background: color-mix(in srgb, var(--accent) 28%, var(--surface));
+}
+
+.terminal-find-hint {
+  margin: 0 0 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.terminal-find-section {
+  margin-bottom: 14px;
+}
+
+.terminal-find-section:last-child {
+  margin-bottom: 0;
+}
+
+.terminal-find-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.terminal-find-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.terminal-find-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.terminal-find-item:hover {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.terminal-find-item-meta {
+  display: block;
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.terminal-find-preview {
+  display: block;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-find-mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+  color: var(--text);
+}
+
+.terminal-find-empty {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.terminal-find-footer-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+.terminal-find-close-footer {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.terminal-find-close-footer:hover {
+  color: var(--text);
+  background: var(--surface);
+}

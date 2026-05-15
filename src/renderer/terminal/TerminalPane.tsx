@@ -10,6 +10,12 @@ import { feedCompletedUserLines } from '@renderer/history/feedCompletedUserLines
 import { stripLeadingShellPrompts } from '@renderer/terminal/stripShellPromptPrefix'
 import { AiPanel } from '@renderer/components/AiPanel'
 import { ConfirmTerminalModal } from '@renderer/components/ConfirmTerminalModal'
+import { TerminalFindModal } from '@renderer/components/TerminalFindModal'
+import {
+  findMatchesInCommandHistory,
+  findMatchesInTerminalBuffer,
+  type TerminalBufferFindMatch,
+} from '@renderer/terminal/terminalFindInBuffer'
 import '@xterm/xterm/css/xterm.css'
 import './TerminalPane.css'
 
@@ -263,7 +269,7 @@ function fitTerminalPreserveScroll(term: Terminal, fit: FitAddon): void {
  * Escribe salida del PTY y, si el usuario iba pegado al fondo sin selección,
  * fuerza el scroll al final usando el callback de term.write() en lugar de rAF.
  */
-function writePtyDataWithFollowScroll(term: Terminal, data: string): void {
+function writePtyDataWithFollowScroll(term: Terminal, data: string, afterParsed?: () => void): void {
   const buf = term.buffer.active
   const wasFollowing =
     buf.type === 'normal' &&
@@ -275,11 +281,13 @@ function writePtyDataWithFollowScroll(term: Terminal, data: string): void {
   // (la escritura no fue procesada aún) → el scroll apunta al fondo incorrecto.
   // El callback de term.write() dispara desde dentro de _innerWrite(), justo
   // después de que baseY se actualizó, garantizando que scrollToBottom() apunta
-  // al fondo real.
-  term.write(data, wasFollowing ? () => {
-    if (term.buffer.active.type !== 'normal') return
-    term.scrollToBottom()
-  } : undefined)
+  // al fondo real. El mismo hook sirve para repintar el canvas (Electron/macOS).
+  term.write(data, () => {
+    if (wasFollowing && term.buffer.active.type === 'normal') {
+      term.scrollToBottom()
+    }
+    afterParsed?.()
+  })
 }
 
 /**
@@ -389,6 +397,9 @@ export const TerminalPane: React.FC<Props> = ({
 
   const [aiSelectedText, setAiSelectedText] = useState('')
   const [confirmClosePaneOpen, setConfirmClosePaneOpen] = useState(false)
+  const [findModalOpen, setFindModalOpen] = useState(false)
+  const [findModalBuffer, setFindModalBuffer] = useState<TerminalBufferFindMatch[]>([])
+  const [findModalHistory, setFindModalHistory] = useState<string[]>([])
   const [terminalScrollDownVisible, setTerminalScrollDownVisible] = useState(false)
   /**
    * Foco en shell / barra del panel (no en chat IA). Se usa para el botón «bajar al final»;
@@ -571,6 +582,20 @@ export const TerminalPane: React.FC<Props> = ({
     term.loadAddon(links)
     term.loadAddon(serialize)
     term.open(containerRef.current)
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type !== 'keydown') return true
+      const accel = e.metaKey || e.ctrlKey
+      if (!accel || e.altKey || e.shiftKey) return true
+      if (e.key !== 'f' && e.key !== 'F' && e.code !== 'KeyF') return true
+      e.preventDefault()
+      e.stopPropagation()
+      queueMicrotask(() => {
+        setFindModalOpen(true)
+        setFindModalBuffer([])
+        setFindModalHistory([])
+      })
+      return false
+    })
     fitTerminalPreserveScroll(term, fit)
 
     termRef.current = term
@@ -591,9 +616,25 @@ export const TerminalPane: React.FC<Props> = ({
     const dResize = term.onResize(() => { updateTerminalScrollDown() })
     queueMicrotask(() => { updateTerminalScrollDown() })
 
+    /** Evita refresh() sobre terminal disposed / distinta instancia (StrictMode, cambio de pestaña). */
+    let termAlive = true
+    let repaintRaf = 0
+    const scheduleTerminalCanvasRepaint = (): void => {
+      if (!termAlive || repaintRaf !== 0) return
+      repaintRaf = requestAnimationFrame(() => {
+        repaintRaf = 0
+        if (!termAlive || term.rows < 1) return
+        term.refresh(0, term.rows - 1)
+      })
+    }
+
     // Cargar scrollback persistido antes del primer output del PTY
     void window.api.loadScrollback(sessionId).then(saved => {
-      if (saved) term.write(saved)
+      if (!termAlive || !saved) return
+      term.write(saved, () => {
+        if (!termAlive) return
+        scheduleTerminalCanvasRepaint()
+      })
     })
 
     const scheduleScrollbackSave = (): void => {
@@ -681,7 +722,11 @@ export const TerminalPane: React.FC<Props> = ({
       serialize: () => serializeAddonRef.current?.serialize() ?? '',
     })
 
-    term.onData(data => { absorbUserInput(data); writeToPty(data) })
+    term.onData(data => {
+      absorbUserInput(data)
+      writeToPty(data)
+      scheduleTerminalCanvasRepaint()
+    })
     term.onTitleChange(title => { if (title && isActivePaneRef.current) onTitleChange(title) })
 
     const resizeObs = new ResizeObserver(() => {
@@ -691,11 +736,9 @@ export const TerminalPane: React.FC<Props> = ({
     })
     if (containerRef.current) resizeObs.observe(containerRef.current)
 
-    window.api.ptyCreate(sessionId, initialPtyCwd?.trim() || undefined)
-    window.api.ptyResize(sessionId, term.cols, term.rows)
-
+    // Suscribirse ANTES de ptyCreate: la salida inicial del shell no se pierde por carrera IPC.
     const unsubData = window.api.onPtyData(sessionId, data => {
-      writePtyDataWithFollowScroll(term, data)
+      writePtyDataWithFollowScroll(term, data, scheduleTerminalCanvasRepaint)
       scheduleScrollbackSave()
       // Mientras haya salida del PTY, el proceso sigue activo: resetear el timer de silencio
       if (isBusyRef.current) {
@@ -708,13 +751,29 @@ export const TerminalPane: React.FC<Props> = ({
       }
     })
     const unsubExit = window.api.onPtyExit(sessionId, code => {
-      writePtyDataWithFollowScroll(term, `\r\n\x1b[2m[proceso terminado — código ${code}]\x1b[0m\r\n`)
+      writePtyDataWithFollowScroll(
+        term,
+        `\r\n\x1b[2m[proceso terminado — código ${code}]\x1b[0m\r\n`,
+        scheduleTerminalCanvasRepaint,
+      )
     })
     const unsubErr = window.api.onPtyError(sessionId, message => {
-      writePtyDataWithFollowScroll(term, `\r\n\x1b[31m${message}\x1b[0m\r\n`)
+      writePtyDataWithFollowScroll(
+        term,
+        `\r\n\x1b[31m${message}\x1b[0m\r\n`,
+        scheduleTerminalCanvasRepaint,
+      )
     })
 
+    window.api.ptyCreate(sessionId, initialPtyCwd?.trim() || undefined)
+    window.api.ptyResize(sessionId, term.cols, term.rows)
+
     return () => {
+      termAlive = false
+      if (repaintRaf !== 0) {
+        cancelAnimationFrame(repaintRaf)
+        repaintRaf = 0
+      }
       absorbUserInputRef.current = () => {}
       ptyInjectRef.current = () => {}
       if (scrollbackSaveTimerRef.current) {
@@ -743,6 +802,8 @@ export const TerminalPane: React.FC<Props> = ({
         if (data) window.api.saveScrollback(sessionId, data)
       } catch { /* ignore */ }
       serializeAddonRef.current = null
+      termRef.current = null
+      fitRef.current = null
       term.dispose()
       onRegisterRef(null)
     }
@@ -756,6 +817,12 @@ export const TerminalPane: React.FC<Props> = ({
     // Force xterm to re-render all glyphs with the new palette
     // (clearTextureAtlas is part of the proposed API, enabled above)
     ;(term as Terminal & { clearTextureAtlas?: () => void }).clearTextureAtlas?.()
+    // En Electron/macOS el atlas puede quedar sin repintar; refresh fuerza un frame.
+    requestAnimationFrame(() => {
+      const t = termRef.current
+      if (!t || t.rows < 1 || t !== term) return
+      t.refresh(0, t.rows - 1)
+    })
   }, [config.themeId])
 
   useEffect(() => {
@@ -848,6 +915,41 @@ export const TerminalPane: React.FC<Props> = ({
     termRef.current?.focus()
   }
 
+  const runTerminalFind = useCallback((raw: string) => {
+    const q = raw.trim()
+    if (!q) return
+    const term = termRef.current
+    if (!term) {
+      setFindModalBuffer([])
+      setFindModalHistory([])
+      return
+    }
+    setFindModalBuffer(findMatchesInTerminalBuffer(term, q))
+    setFindModalHistory(findMatchesInCommandHistory(recentCommandsRef.current, q))
+  }, [])
+
+  const closeFindModal = useCallback(() => {
+    setFindModalOpen(false)
+    setFindModalBuffer([])
+    setFindModalHistory([])
+    queueMicrotask(() => { termRef.current?.focus() })
+  }, [])
+
+  const onGoToFindBufferMatch = useCallback((m: TerminalBufferFindMatch) => {
+    const term = termRef.current
+    if (!term) return
+    closeFindModal()
+    term.scrollToLine(m.lineIndex)
+    term.focus()
+  }, [closeFindModal])
+
+  const onApplyFindHistoryLine = (line: string): void => {
+    setFindModalOpen(false)
+    setFindModalBuffer([])
+    setFindModalHistory([])
+    handleRecentCmdPick(line)
+  }
+
   const handleClearCmdHistory = useCallback((): void => {
     if (cmdHistorySaveTimerRef.current) {
       clearTimeout(cmdHistorySaveTimerRef.current)
@@ -908,7 +1010,14 @@ export const TerminalPane: React.FC<Props> = ({
       )}
       {/* Terminal body */}
       <div className="terminal-pane-body">
-        <div className="terminal-pane-main" onMouseDown={() => onRequestPaneFocusRef.current?.()}>
+        <div
+          className="terminal-pane-main"
+          onMouseDown={e => {
+            onRequestPaneFocusRef.current?.()
+            if ((e.target as HTMLElement).closest('button')) return
+            termRef.current?.focus()
+          }}
+        >
           <div ref={containerRef} className="terminal-container" />
           {terminalScrollDownVisible && shellOrToolbarFocused && (
             <button
@@ -1123,6 +1232,16 @@ export const TerminalPane: React.FC<Props> = ({
           />
         </div>
       </div>
+
+      <TerminalFindModal
+        open={findModalOpen}
+        onClose={closeFindModal}
+        bufferMatches={findModalBuffer}
+        historyMatches={findModalHistory}
+        onSearch={runTerminalFind}
+        onGoToBufferMatch={onGoToFindBufferMatch}
+        onApplyHistoryLine={onApplyFindHistoryLine}
+      />
 
       <ConfirmTerminalModal
         open={confirmClosePaneOpen}

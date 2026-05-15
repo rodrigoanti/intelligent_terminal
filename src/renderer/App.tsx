@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { applyTheme, getTheme } from '@themes/presets'
+import { applyTheme, getTheme, normalizeThemeId } from '@themes/presets'
 import type { AppConfig } from '@shared/configSchema'
 import { CONFIG_DEFAULTS } from '@shared/configSchema'
 import { TabBar } from './components/TabBar'
@@ -96,7 +96,11 @@ export const App: React.FC = () => {
   // Load config on mount; theme + fuente se aplican en el efecto siguiente cuando `configReady`
   useEffect(() => {
     window.api.getConfig().then(cfg => {
-      setConfig(cfg)
+      const tid = normalizeThemeId(cfg.themeId)
+      if (tid !== cfg.themeId) {
+        void window.api.setConfig({ themeId: tid })
+      }
+      setConfig({ ...cfg, themeId: tid })
       setConfigReady(true)
     })
   }, [])

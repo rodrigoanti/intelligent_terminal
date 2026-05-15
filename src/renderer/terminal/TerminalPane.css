@@ -267,6 +267,8 @@
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
+  /* Aísla composición del canvas xterm respecto al resto del chrome (Electron/macOS). */
+  isolation: isolate;
 }
 
 /* Let xterm fill the container */

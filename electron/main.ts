@@ -340,8 +340,8 @@ function createWindow(): BrowserWindow {
       ? {
           titleBarStyle: 'hiddenInset' as const,
           trafficLightPosition: { x: 14, y: 14 },
-          vibrancy: 'under-window' as const,
-          visualEffectState: 'active' as const,
+          // Sin vibrancy: con `under-window` + canvas (xterm) en Chromium/Electron a veces
+          // el lienzo deja de repintar y no se ve lo que tecleas aunque el PTY sí recibe datos.
         }
       : {}),
     webPreferences: {
