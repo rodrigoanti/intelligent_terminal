@@ -8,6 +8,8 @@ interface Props {
   message: string
   /** Texto secundario opcional */
   detail?: string
+  /** Por encima del panel de IA cuando el agente pide confirmación */
+  zIndex?: number
   onConfirm: () => void
   onCancel: () => void
 }
@@ -16,7 +18,7 @@ interface Props {
  * Confirmación estilo consola: Enter o clic en OK confirma; Esc o backdrop cancelan (vía TerminalModal).
  */
 export const ConfirmTerminalModal: React.FC<Props> = ({
-  open, message, detail, onConfirm, onCancel,
+  open, message, detail, zIndex = 600, onConfirm, onCancel,
 }) => {
   const confirm = useCallback(() => {
     onConfirm()
@@ -40,7 +42,7 @@ export const ConfirmTerminalModal: React.FC<Props> = ({
       open={open}
       onClose={onCancel}
       size="sm"
-      zIndex={600}
+      zIndex={zIndex}
       showHeaderClose={false}
       closeOnEscape
       closeOnBackdrop

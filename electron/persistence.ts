@@ -49,10 +49,23 @@ export interface ChatEntry {
   id: string
   role: 'user' | 'assistant'
   content: string
+  /** Contenido de razonamiento interno emitido por el modelo en modo thinking. */
+  thinking?: string
 }
 
 const aiChatDir = (): string => join(USER_DATA(), 'ai-chats')
 const aiChatFile = (paneId: string): string => join(aiChatDir(), `${paneId}.json`)
+
+function isValidChatEntry(x: unknown): x is ChatEntry {
+  if (!x || typeof x !== 'object') return false
+  const e = x as Record<string, unknown>
+  return (
+    typeof e.id === 'string' &&
+    (e.role === 'user' || e.role === 'assistant') &&
+    typeof e.content === 'string' &&
+    (e.thinking === undefined || typeof e.thinking === 'string')
+  )
+}
 
 export function loadAiChat(paneId: string): ChatEntry[] {
   try {
@@ -61,7 +74,7 @@ export function loadAiChat(paneId: string): ChatEntry[] {
     const raw = readFileSync(path, 'utf-8')
     const data = JSON.parse(raw) as unknown
     if (!Array.isArray(data)) return []
-    return data as ChatEntry[]
+    return data.filter(isValidChatEntry)
   } catch {
     return []
   }
@@ -115,6 +128,38 @@ export function saveCmdHistory(paneId: string, lines: string[]): void {
 export function deleteCmdHistory(paneId: string): void {
   try {
     const path = cmdHistoryFile(paneId)
+    if (existsSync(path)) unlinkSync(path)
+  } catch { /* ignore */ }
+}
+
+// ─── Interactions log ─────────────────────────────────────────────────────────
+
+const interactionsLogDir = (): string => join(USER_DATA(), 'interactions-log')
+const interactionsLogFile = (paneId: string): string => join(interactionsLogDir(), `${paneId}.json`)
+
+export function loadInteractionsLog(paneId: string): string[] {
+  try {
+    const path = interactionsLogFile(paneId)
+    if (!existsSync(path)) return []
+    const raw = readFileSync(path, 'utf-8')
+    const data = JSON.parse(raw) as unknown
+    if (!Array.isArray(data)) return []
+    return data.filter((x): x is string => typeof x === 'string')
+  } catch {
+    return []
+  }
+}
+
+export function saveInteractionsLog(paneId: string, entries: string[]): void {
+  try {
+    ensureDir(interactionsLogDir())
+    writeFileSync(interactionsLogFile(paneId), JSON.stringify(entries), 'utf-8')
+  } catch { /* ignore */ }
+}
+
+export function deleteInteractionsLog(paneId: string): void {
+  try {
+    const path = interactionsLogFile(paneId)
     if (existsSync(path)) unlinkSync(path)
   } catch { /* ignore */ }
 }

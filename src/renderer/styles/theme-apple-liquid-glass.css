@@ -1,0 +1,108 @@
+/*
+ * Apple Liquid Glass — vidrio: capas translúcidas, desenfoque y bisel.
+ * En macOS, html/body transparentes dejan ver el material «under-window» del BrowserWindow.
+ */
+
+html[data-theme="appleLiquidGlass"] body,
+html[data-theme="appleLiquidGlass"] #root {
+  background: transparent !important;
+}
+
+html[data-theme="appleLiquidGlass"] .app-root {
+  background: transparent;
+}
+
+html[data-theme="appleLiquidGlass"] .titlebar {
+  background: rgba(22, 22, 28, 0.45);
+  -webkit-backdrop-filter: blur(22px) saturate(1.55);
+  backdrop-filter: blur(22px) saturate(1.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+html[data-theme="appleLiquidGlass"] .tabbar {
+  background: rgba(14, 14, 18, 0.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+html[data-theme="appleLiquidGlass"] .tab {
+  background: transparent;
+}
+
+html[data-theme="appleLiquidGlass"] .tab:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+html[data-theme="appleLiquidGlass"] .tab--active {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme="appleLiquidGlass"] .terminal-pane-ai-dock {
+  background: rgba(10, 10, 14, 0.38);
+  -webkit-backdrop-filter: blur(28px) saturate(1.45);
+  backdrop-filter: blur(28px) saturate(1.45);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+html[data-theme="appleLiquidGlass"] .ai-panel {
+  --ai-panel-base: rgba(8, 8, 12, 0.32);
+  background-color: rgba(10, 10, 14, 0.36);
+  -webkit-backdrop-filter: blur(26px) saturate(1.42);
+  backdrop-filter: blur(26px) saturate(1.42);
+  background-image: linear-gradient(
+    155deg,
+    color-mix(in srgb, var(--accent) 14%, transparent) 0%,
+    transparent min(40%, 120px)
+  );
+}
+
+html[data-theme="appleLiquidGlass"] .ai-panel-header {
+  background: rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+html[data-theme="appleLiquidGlass"] .ai-panel-header--toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="appleLiquidGlass"] .ai-dock-collapsed-bar {
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  backdrop-filter: blur(18px) saturate(1.35);
+}
+
+html[data-theme="appleLiquidGlass"] .terminal-modal-panel {
+  background: rgba(24, 24, 30, 0.72);
+  -webkit-backdrop-filter: blur(26px) saturate(1.38);
+  backdrop-filter: blur(26px) saturate(1.38);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 24px 64px rgba(0, 0, 0, 0.52);
+}
+
+html[data-theme="appleLiquidGlass"] .terminal-modal-header {
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="appleLiquidGlass"] .terminal-modal-header-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="appleLiquidGlass"] .pane-toolbar-btn,
+html[data-theme="appleLiquidGlass"] .terminal-split-corner-btn {
+  background: rgba(34, 34, 42, 0.55);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  backdrop-filter: blur(14px) saturate(1.25);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme="appleLiquidGlass"] .pane-toolbar-btn:hover,
+html[data-theme="appleLiquidGlass"] .terminal-split-corner-btn:hover {
+  background: rgba(48, 48, 58, 0.65);
+}

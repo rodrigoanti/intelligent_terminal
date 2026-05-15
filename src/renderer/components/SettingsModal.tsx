@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import type { AppConfig } from '@shared/configSchema'
+import type { AppConfig, AgentShellPolicy } from '@shared/configSchema'
 import { validateConfig, mergeWithDefaults } from '@shared/configSchema'
 import { fetchOllamaModelNames } from '@ai/ollamaModels'
 import { TerminalModal } from './TerminalModal'
@@ -16,6 +16,9 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     ollamaBaseURL: config.ollamaBaseURL,
     defaultModel: config.defaultModel,
     maxContextLines: String(config.maxContextLines),
+    agentMode: config.agentMode ?? false,
+    agentShellPolicy: (config.agentShellPolicy ?? 'off') as AgentShellPolicy,
+    thinkingMode: config.thinkingMode ?? false,
   })
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -67,6 +70,9 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       ollamaBaseURL: form.ollamaBaseURL.trim(),
       defaultModel: form.defaultModel.trim(),
       maxContextLines: Number(form.maxContextLines),
+      agentMode: form.agentMode,
+      agentShellPolicy: form.agentShellPolicy,
+      thinkingMode: form.thinkingMode,
     })
     const errs = validateConfig(updated)
     if (errs.length) { setErrors(errs); return }
@@ -179,6 +185,42 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                 onChange={e => update('maxContextLines', e.target.value)}
               />
               <span className="settings-hint">Cuántas líneas del terminal se envían al modelo como contexto.</span>
+            </label>
+
+            <label className="settings-label settings-label--checkbox">
+              <span className="settings-checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={form.agentMode}
+                  onChange={e => setForm(prev => ({ ...prev, agentMode: e.target.checked }))}
+                />
+                Modo agente (lectura/escritura de archivos)
+              </span>
+              <span className="settings-hint">
+                Si está activo, el chat puede leer y modificar archivos bajo el directorio de trabajo de la sesión,
+                usando bloques especiales en las respuestas del modelo (solo con rutas relativas al proyecto).
+              </span>
+            </label>
+
+            <label className="settings-label">
+              Comandos del agente (shell)
+              <select
+                className="model-select"
+                value={form.agentShellPolicy}
+                disabled={!form.agentMode}
+                onChange={e =>
+                  setForm(prev => ({ ...prev, agentShellPolicy: e.target.value as AgentShellPolicy }))
+                }
+                aria-label="Política de ejecución de comandos del agente"
+              >
+                <option value="off">No ejecutar (solo archivos / texto)</option>
+                <option value="ask">Preguntar antes de cada comando</option>
+                <option value="always">Ejecutar siempre (sin confirmación)</option>
+              </select>
+              <span className="settings-hint">
+                Los comandos se ejecutan en el cwd de la sesión (no en el PTY visible), con tiempo máximo y límite de salida.
+                «Siempre» es peligroso en carpetas que no controlas al 100%.
+              </span>
             </label>
           </section>
 

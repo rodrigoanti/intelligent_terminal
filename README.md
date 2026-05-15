@@ -1,99 +1,43 @@
-# AI Terminal
+> **Última revisión de este README:** 14 de mayo de 2026.
 
-Terminal para macOS con integración Ollama, pestañas y temas de color.
+## Panel de IA (Ollama) — qué se envía en cada mensaje
 
-## Requisitos
+El chat visible en la interfaz **no** se reenvía como historial completo a Ollama. En cada envío se construye:
 
-- macOS 12+
-- Node.js 18+
-- [Ollama](https://ollama.ai) corriendo localmente
+- Un mensaje **system** con: instrucciones base, carpeta de trabajo (`cwd`), listado de la raíz, contenido de `package.json` si existe, el archivo `.ai-terminal/agent.md` (hasta ~22 000 caracteres), un **resumen** de interacciones anteriores (máx. 120 entradas; cada una resume pregunta y respuesta en **≤10 palabras**), las **últimas líneas del scrollback** del terminal (hasta ~8 000 caracteres) y, si está activo el modo agente, las reglas de READ/WRITE/RUN.
+- Un único mensaje **user** con el texto que acabas de escribir (en modo “explicar selección”, el contenido seleccionado).
 
-## Desarrollo
+Por eso una respuesta puede parecer “de otro contexto”: el modelo prioriza el **system** (terminal, `agent.md`, resúmenes viejos) y **no ve** los mensajes anteriores del hilo salvo lo que quedó en ese resumen. Si en el terminal o en `agent.md` hay texto largo (por ejemplo documentación de firma de código), el modelo puede enlazarse a eso aunque tu pregunta sea otra.
 
-```bash
-npm install
-npm run dev
-```
+## ⚠️ Notas Importantes (actualizado)
 
-**DevTools:** por defecto ya no se abren solos (así se evita mucho ruido en la consola del terminal por mensajes internos de Chromium). Para abrirlos: `ELECTRON_OPEN_DEVTOOLS=1 npm run dev` o **⌥⌘I** / menú Vista en la ventana de Electron si lo añades más adelante.
+- **Firma de código (macOS)**: Para distribuir aplicaciones en macOS, se requiere una firma con un certificado válido de Apple. Si no se firma, podrían surgir problemas con la seguridad del sistema operativo.
 
-Los mensajes tipo `Autofill.enable wasn't found` o `language-mismatch` vienen del **DevTools embebido** cuando hay pequeñas diferencias con la versión de Electron; **no indican un fallo de tu código**.
+  **Solución para el problema de firma:**
+  1. **Obtén un certificado de Apple Developer** desde [Apple Developer](https://developer.apple.com/).
+  2. **Configura `electron-builder`** para usar el certificado:
+     - Asegúrate de que el certificado esté instalado en tu Keychain.
+     - Configura la opción `signingIdentity` en `electron-builder` (ejemplo: `"Apple Development: Tu Nombre (XXXXXXXXXX)"`).
+     - Puedes usar la herramienta [electron-notarize](https://github.com/electron/electron-notarize) para notarizar la aplicación después del empaquetado.
 
-**Atajos:** **⌘T** / **Ctrl+T** — nueva pestaña (salvo foco en input/textarea/select fuera del terminal). **⌘W** / **Ctrl+W** — con más de una pestaña cierra solo la activa; con una sola, cierra la ventana. Con DevTools abiertos y enfocados, **⌘W** sigue el comportamiento del propio DevTools.
+- **Dependencias nativas**: Asegúrate de compilar las dependencias nativas con `npm run rebuild` antes de empacar, especialmente en sistemas Windows o macOS.
 
-Tras `npm install` se ejecuta **automáticamente** `electron-rebuild` para compilar `node-pty` contra la versión de Electron embebida. Si al abrir una pestaña aparece `posix_spawnp failed`, ejecuta manualmente:
+## 📦 Empaquetado (actualizado)
 
-```bash
-npm run rebuild:native
-```
+- **Windows**: `dist/windows` (`.exe`)
+- **macOS**: `dist/mac-arm64` (`.app` para Apple Silicon) o `dist/mac` (`.app` para Intel)
+- **Linux**: `dist/linux` (`.deb`, `.rpm`)
 
-## Build
+## 🛠️ Configuración Adicional
 
-```bash
-npm run dist   # solo .app macOS (sin .dmg): salida en dist/mac-arm64/ y dist/mac-x64/
-```
-
-### Ícono de la aplicación
-
-Puedes usar **PNG** cuadrado. **256×256** suele funcionar, pero en Retina puede verse más suave; mejor **512×512** o **1024×1024** para el Dock. Colócalo como:
-
-```
-build/icon.png
-```
-
-`electron-builder` lo convierte al `.icns` del `.app` al empaquetar. En desarrollo, si ese archivo existe, también se usa como ícono de la ventana. En el repositorio hay un **PNG de relleno** (512×512) para que `npm run dist` funcione sin pasos extra; sustitúyelo por tu diseño.
-
-## Archivo de configuración
-
-Los ajustes se guardan en:
-
-```
-~/Library/Application Support/AI Terminal/config.json
-```
-
-Puedes editarlo directamente con cualquier editor de texto. Las claves soportadas son:
-
-| Clave | Tipo | Descripción | Default |
-|---|---|---|---|
-| `ollamaBaseURL` | string | URL base del servidor Ollama | `http://127.0.0.1:11434` |
-| `defaultModel` | string | Modelo Ollama (en Ajustes se lista con `/api/tags`) | `llama3.2` |
-| `maxContextLines` | number | Líneas de scrollback enviadas como contexto (10–2000) | `200` |
-| `themeId` | string | Identificador del tema de color | `midnight` |
-
-Ejemplo mínimo:
-
+### Ejemplo de configuración de `electron-builder` para firma de código:
 ```json
 {
-  "ollamaBaseURL": "http://127.0.0.1:11434",
-  "defaultModel": "llama3.2",
-  "maxContextLines": 200,
-  "themeId": "midnight"
+  "mac": {
+    "signingHashAlgorithm": "sha256",
+    "signingIdentity": "Apple Development: Tu Nombre (XXXXXXXXXX)",
+    "entitlements": "build/entitlements.mac.plist",
+    "hardenedRuntime": true
+  }
 }
 ```
-
-Si el archivo no existe o falta alguna clave, se usan los valores por defecto automáticamente.
-
-Desde la app puedes acceder a la carpeta vía **Ajustes → Revelar carpeta de configuración en Finder**.
-
-## Carpetas recientes (`cd`)
-
-Cada vez que envías un `cd` al terminal (Enter), la app resuelve la ruta absoluta y la guarda en **`user-history/cd-recent.md`** (máximo **15** entradas **sin repetir**; la más reciente arriba). El cwd lógico se infiere de tus `cd` (no del estado real del shell si un `cd` falla). La detección usa la misma secuencia de teclas que envías al PTY desde el panel.
-
-Debajo del terminal hay la pestaña **«Carpetas recientes»**: al abrirla ves el listado; al pulsar una fila se envía `cd '…'` al PTY de esa pestaña.
-
-Ruta en macOS:
-
-```
-~/Library/Application Support/AI Terminal/user-history/cd-recent.md
-```
-
-## Temas disponibles
-
-| ID | Nombre |
-|---|---|
-| `midnight` | Midnight |
-| `nord` | Nord |
-| `gruvbox` | Gruvbox Dark |
-| `solarDark` | Solar Dark |
-| `paperLight` | Paper Light |
-| `aurora` | Aurora |

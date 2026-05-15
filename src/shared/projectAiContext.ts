@@ -4,5 +4,4 @@ export interface ProjectAiContextForAi {
   /** Nombres en la raíz del cwd, una por línea; directorios terminan en `/`. */
   listing: string
   packageJson: string | null
-  readmeMd: string | null
 }

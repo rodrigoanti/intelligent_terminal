@@ -58,12 +58,21 @@
   background: var(--surface-hover);
 }
 
-.theme-picker-trigger-swatch {
+.theme-picker-trigger-palette {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 15%, transparent);
+  display: flex;
+  flex-direction: row;
+  width: 20px;
+  height: 14px;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.theme-picker-trigger-swatch-bg,
+.theme-picker-trigger-swatch-accent {
+  flex: 1;
+  min-width: 0;
 }
 
 .theme-picker-trigger-label {

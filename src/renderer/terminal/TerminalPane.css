@@ -28,6 +28,19 @@
   max-height: none;
 }
 
+/* Chat IA a pantalla completa en el panel (⌘⌥I): el dock ocupa el alto; el cuerpo de la terminal se colapsa. */
+.terminal-pane--ai-maximized .terminal-pane-body {
+  flex: 0 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-pane--ai-maximized .terminal-pane-ai-dock {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
 .ai-dock-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -191,6 +204,40 @@
 }
 
 .terminal-split-corner-btn:active {
+  opacity: 0.88;
+}
+
+/* Flecha: bajar al final del scrollback (solo visible si hay salida más reciente abajo) */
+.terminal-scroll-down-btn {
+  position: absolute;
+  bottom: 42px;
+  right: 8px;
+  z-index: 56;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  color: var(--text-muted);
+  opacity: 0.95;
+  cursor: pointer;
+  box-shadow: 0 1px 4px color-mix(in srgb, black 22%, transparent);
+  transition: color 0.12s, opacity 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.terminal-scroll-down-btn:hover {
+  color: var(--accent);
+  opacity: 1;
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.terminal-scroll-down-btn:active {
   opacity: 0.88;
 }
 

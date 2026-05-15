@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { applyTheme, getTheme, themePreviewGradient } from '@themes/presets'
+import { applyTheme, getTheme } from '@themes/presets'
 import type { AppConfig } from '@shared/configSchema'
 import { CONFIG_DEFAULTS } from '@shared/configSchema'
 import { TabBar } from './components/TabBar'
@@ -43,7 +43,12 @@ export const App: React.FC = () => {
   const [busyPanes, setBusyPanes] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [themePickerOpen, setThemePickerOpen] = useState(false)
-  const termRefs = useRef<Map<string, { getSelection: () => string; writeToTty: (s: string) => void; toggleAi: () => void; serialize: () => string }>>(new Map())
+  const termRefs = useRef<Map<string, {
+    getSelection: () => string
+    writeToTty: (s: string) => void
+    toggleAiFullscreen: () => void
+    serialize: () => string
+  }>>(new Map())
   const splitSpawnCwdRef = useRef<Map<string, string>>(new Map())
   const cwdsRef = useRef<Record<string, string>>({})
   const aiExpandedByPaneRef = useRef<Record<string, boolean>>({})
@@ -72,7 +77,7 @@ export const App: React.FC = () => {
       })
     )
     cwdsRef.current = Object.fromEntries(entries)
-    window.api.saveSession({
+    await window.api.saveSession({
       version: 1,
       activeTabId: currentActiveTabId,
       tabs: currentTabs,
@@ -88,14 +93,18 @@ export const App: React.FC = () => {
     }, 400)
   }, [flushCwdsAndSave])
 
-  // Load config + apply saved theme on mount; hold terminal mounting until ready
+  // Load config on mount; theme + fuente se aplican en el efecto siguiente cuando `configReady`
   useEffect(() => {
     window.api.getConfig().then(cfg => {
       setConfig(cfg)
-      applyTheme(getTheme(cfg.themeId))
       setConfigReady(true)
     })
   }, [])
+
+  useEffect(() => {
+    if (!configReady) return
+    applyTheme(getTheme(config.themeId))
+  }, [configReady, config.themeId])
 
   // Load persisted session on mount
   useEffect(() => {
@@ -158,7 +167,7 @@ export const App: React.FC = () => {
             })
           )
           cwdsRef.current = Object.fromEntries(entries)
-          window.api.saveSession({
+          await window.api.saveSession({
             version: 1,
             activeTabId: currentActiveTabId,
             tabs: currentTabs,
@@ -361,8 +370,6 @@ export const App: React.FC = () => {
   }, [])
 
   const handleThemeChange = useCallback((themeId: string) => {
-    const theme = getTheme(themeId)
-    applyTheme(theme)
     const updated = { ...config, themeId }
     setConfig(updated)
     window.api.setConfig({ themeId })
@@ -370,7 +377,14 @@ export const App: React.FC = () => {
 
   const handleConfigSaved = useCallback((cfg: AppConfig) => {
     setConfig(cfg)
-    applyTheme(getTheme(cfg.themeId))
+  }, [])
+
+  const patchConfig = useCallback(async (partial: Partial<AppConfig>) => {
+    const r = await window.api.setConfig(partial)
+    if (r.ok) {
+      const cfg = await window.api.getConfig()
+      setConfig(cfg)
+    }
   }, [])
 
   const MIN_FONT = 9
@@ -387,9 +401,41 @@ export const App: React.FC = () => {
 
   // Atajos de teclado globales (captura en fase de bajada para que funcionen con foco en xterm)
   useEffect(() => {
+    /**
+     * ⌘I: no bloquear si el foco está en el chat IA (p. ej. textarea), para poder colapsar
+     * con el mismo atajo. Sí bloquear en otros campos (ajustes, etc.).
+     */
+    const shouldBlockAiToggleShortcut = (ev: KeyboardEvent): boolean => {
+      const target = ev.target as HTMLElement | null
+      if (!target) return false
+      if (target.closest('.xterm')) return false
+      if (target.closest('.ai-panel')) return false
+      const tag = target.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+      if (target.isContentEditable) return true
+      return false
+    }
+
     const onKeyDown = (e: KeyboardEvent): void => {
       const accel = e.metaKey || e.ctrlKey
-      if (!accel || e.altKey || e.shiftKey) return
+      if (!accel) return
+
+      const isI = e.key === 'i' || e.key === 'I' || e.code === 'KeyI'
+
+      // ⌘I / Ctrl+I: alternar chat IA a pantalla completa ↔ colapsado (panel activo)
+      if (!e.altKey && !e.shiftKey && isI) {
+        if (shouldBlockAiToggleShortcut(e)) return
+        e.preventDefault()
+        e.stopPropagation()
+        const tabList = tabsRef.current
+        const aid = activeTabIdRef.current
+        const tab = tabList.find(t => t.id === aid)
+        if (!tab) return
+        termRefs.current.get(tab.activePaneId)?.toggleAiFullscreen()
+        return
+      }
+
+      if (e.altKey || e.shiftKey) return
 
       // ⌘T / Ctrl+T: nueva pestaña
       if (e.key === 't' || e.key === 'T' || e.code === 'KeyT') {
@@ -479,11 +525,16 @@ export const App: React.FC = () => {
             aria-haspopup="dialog"
             aria-expanded={themePickerOpen}
           >
-            <span
-              className="theme-picker-trigger-swatch"
-              style={{ background: themePreviewGradient(getTheme(config.themeId)) }}
-              aria-hidden
-            />
+            <span className="theme-picker-trigger-palette" aria-hidden>
+              <span
+                className="theme-picker-trigger-swatch-bg"
+                style={{ background: getTheme(config.themeId).vars['--bg'] ?? getTheme(config.themeId).xterm.background }}
+              />
+              <span
+                className="theme-picker-trigger-swatch-accent"
+                style={{ background: getTheme(config.themeId).vars['--accent'] ?? getTheme(config.themeId).xterm.cursor }}
+              />
+            </span>
             <span className="theme-picker-trigger-label">{getTheme(config.themeId).name}</span>
           </button>
 
@@ -538,6 +589,7 @@ export const App: React.FC = () => {
                     }
                     onRequestPaneFocus={() => handleFocusPane(tab.id, paneId)}
                     config={config}
+                    onConfigPatch={patchConfig}
                     onTitleChange={title => handleTabTitleChange(tab.id, title)}
                     onBusyChange={busy => handleBusyChange(paneId, busy)}
                     onRegisterRef={ref => {
@@ -564,7 +616,7 @@ export const App: React.FC = () => {
       <ThemePickerModal
         open={themePickerOpen}
         currentThemeId={config.themeId}
-        onSelect={handleThemeChange}
+        onSelectTheme={handleThemeChange}
         onClose={() => setThemePickerOpen(false)}
       />
     </div>

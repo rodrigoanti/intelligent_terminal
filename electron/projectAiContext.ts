@@ -5,13 +5,9 @@ import type { ProjectAiContextForAi } from '../src/shared/projectAiContext'
 const MAX_DIR_ENTRIES = 320
 const MAX_LISTING_CHARS = 12_000
 const MAX_PACKAGE_JSON = 18_000
-const MAX_README = 14_000
-
-const README_NAMES = ['README.md', 'readme.md', 'Readme.md', 'README.MD']
-
 /**
  * Lista el directorio (equivalente informativo a `ls` en la raíz del cwd),
- * y opcionalmente package.json y README.md de esa misma carpeta.
+ * y opcionalmente package.json de esa misma carpeta.
  */
 export function gatherProjectAiContextForCwd(cwdRaw: string): ProjectAiContextForAi | null {
   let dir: string
@@ -35,9 +31,8 @@ export function gatherProjectAiContextForCwd(cwdRaw: string): ProjectAiContextFo
   } catch {
     return {
       cwd: dir,
-      listing: '(no se pudo leer el directorio)',
+      listing: '(could not read directory)',
       packageJson: null,
-      readmeMd: null,
     }
   }
 
@@ -48,7 +43,7 @@ export function gatherProjectAiContextForCwd(cwdRaw: string): ProjectAiContextFo
   const lines: string[] = []
   for (const e of dirents) {
     if (lines.length >= MAX_DIR_ENTRIES) {
-      lines.push('… (más entradas omitidas)')
+      lines.push('… (more entries omitted)')
       break
     }
     const suffix = e.isDirectory() ? '/' : ''
@@ -57,7 +52,7 @@ export function gatherProjectAiContextForCwd(cwdRaw: string): ProjectAiContextFo
 
   let listing = lines.join('\n')
   if (listing.length > MAX_LISTING_CHARS) {
-    listing = `${listing.slice(0, MAX_LISTING_CHARS)}\n… (listado truncado)`
+    listing = `${listing.slice(0, MAX_LISTING_CHARS)}\n… (listing truncated)`
   }
 
   let packageJson: string | null = null
@@ -67,28 +62,12 @@ export function gatherProjectAiContextForCwd(cwdRaw: string): ProjectAiContextFo
       const raw = readFileSync(pkgPath, 'utf-8')
       packageJson =
         raw.length > MAX_PACKAGE_JSON
-          ? `${raw.slice(0, MAX_PACKAGE_JSON)}\n… (package.json truncado)`
+          ? `${raw.slice(0, MAX_PACKAGE_JSON)}\n… (package.json truncated)`
           : raw
     } catch {
       packageJson = null
     }
   }
 
-  let readmeMd: string | null = null
-  for (const name of README_NAMES) {
-    const p = join(dir, name)
-    if (!existsSync(p)) continue
-    try {
-      const raw = readFileSync(p, 'utf-8')
-      readmeMd =
-        raw.length > MAX_README
-          ? `${raw.slice(0, MAX_README)}\n… (README truncado)`
-          : raw
-      break
-    } catch {
-      /* siguiente nombre */
-    }
-  }
-
-  return { cwd: dir, listing, packageJson, readmeMd }
+  return { cwd: dir, listing, packageJson }
 }

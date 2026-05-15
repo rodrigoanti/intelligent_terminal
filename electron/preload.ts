@@ -79,20 +79,56 @@ const api = {
     ipcRenderer.send(IPC.OPEN_FOLDER, folderPath)
   },
 
-  getAppReadme(): Promise<string> {
-    return ipcRenderer.invoke(IPC.APP_README_GET)
-  },
-
   getProjectAiContext(sessionId: string): Promise<ProjectAiContextForAi | null> {
     return ipcRenderer.invoke(IPC.PROJECT_AI_CONTEXT_GET, sessionId)
+  },
+
+  readAgentMd(sessionId: string): Promise<string | null> {
+    return ipcRenderer.invoke(IPC.AGENT_MD_READ, sessionId)
+  },
+
+  writeAgentMd(
+    sessionId: string,
+    content: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke(IPC.AGENT_MD_WRITE, sessionId, content)
+  },
+
+  getAgentFolderTree(sessionId: string): Promise<string> {
+    return ipcRenderer.invoke(IPC.AGENT_MD_TREE, sessionId)
+  },
+
+  agentReadFile(
+    sessionId: string,
+    relPath: string,
+  ): Promise<{ ok: boolean; content?: string; error?: string }> {
+    return ipcRenderer.invoke(IPC.AGENT_FILE_READ, sessionId, relPath)
+  },
+
+  agentWriteFile(
+    sessionId: string,
+    relPath: string,
+    content: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke(IPC.AGENT_FILE_WRITE, sessionId, relPath, content)
+  },
+
+  agentRunShell(
+    sessionId: string,
+    command: string,
+  ): Promise<
+    | { ok: true; exitCode: number | null; stdout: string; stderr: string }
+    | { ok: false; error: string }
+  > {
+    return ipcRenderer.invoke(IPC.AGENT_SHELL_RUN, sessionId, command)
   },
 
   // ─── Persistencia ────────────────────────────────────────────────────────
   loadSession(): Promise<PersistedSession | null> {
     return ipcRenderer.invoke(IPC.SESSION_LOAD)
   },
-  saveSession(data: PersistedSession): void {
-    ipcRenderer.send(IPC.SESSION_SAVE, data)
+  saveSession(data: PersistedSession): Promise<void> {
+    return ipcRenderer.invoke(IPC.SESSION_SAVE, data)
   },
   loadAiChat(paneId: string): Promise<ChatEntry[]> {
     return ipcRenderer.invoke(IPC.AI_CHAT_LOAD, paneId)
@@ -120,6 +156,15 @@ const api = {
   },
   deleteScrollback(paneId: string): void {
     ipcRenderer.send(IPC.SCROLLBACK_DELETE, paneId)
+  },
+  loadInteractionsLog(paneId: string): Promise<string[]> {
+    return ipcRenderer.invoke(IPC.INTERACTIONS_LOG_LOAD, paneId)
+  },
+  saveInteractionsLog(paneId: string, entries: string[]): void {
+    ipcRenderer.send(IPC.INTERACTIONS_LOG_SAVE, paneId, entries)
+  },
+  deleteInteractionsLog(paneId: string): void {
+    ipcRenderer.send(IPC.INTERACTIONS_LOG_DELETE, paneId)
   },
   onSaveBeforeClose(cb: () => void): () => void {
     const listener = (): void => cb()

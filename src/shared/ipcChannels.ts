@@ -24,10 +24,20 @@ export const IPC = {
   LIST_CWD_DIRS: 'cdRecent:listCwdDirs',
   /** Renderer → main: abre una carpeta en Finder */
   OPEN_FOLDER: 'shell:openFolder',
-  /** Renderer → main: contenido de README.md del proyecto (contexto IA) */
-  APP_README_GET: 'app:readme',
-  /** Renderer → main: listado del cwd de la sesión + package.json + README.md (contexto IA) */
+  /** Renderer → main: listado del cwd de la sesión + package.json (contexto IA) */
   PROJECT_AI_CONTEXT_GET: 'project:aiContext',
+  /** Renderer → main (invoke): lee `.ai-terminal/agent.md` del cwd de la sesión; null si no existe */
+  AGENT_MD_READ: 'agentMd:read',
+  /** Renderer → main (invoke): escribe `.ai-terminal/agent.md` en el cwd de la sesión */
+  AGENT_MD_WRITE: 'agentMd:write',
+  /** Renderer → main (invoke): árbol superficial de carpetas del cwd (bootstrap agent.md) */
+  AGENT_MD_TREE: 'agentMd:tree',
+  /** Renderer → main (invoke): leer archivo relativo al cwd de la sesión (modo agente) */
+  AGENT_FILE_READ: 'agentFile:read',
+  /** Renderer → main (invoke): escribir archivo relativo al cwd de la sesión (modo agente) */
+  AGENT_FILE_WRITE: 'agentFile:write',
+  /** Renderer → main (invoke): ejecutar una línea de shell en el cwd de la sesión (modo agente) */
+  AGENT_SHELL_RUN: 'agentShell:run',
 
   // ─── Persistencia de sesión ────────────────────────────────────────────────
   /** Renderer → main: guardar layout de pestañas + cwds */
@@ -52,6 +62,12 @@ export const IPC = {
   SCROLLBACK_LOAD: 'scrollback:load',
   /** Renderer → main: eliminar scrollback de un pane */
   SCROLLBACK_DELETE: 'scrollback:delete',
+  /** Renderer → main (invoke): cargar log de interacciones de un pane */
+  INTERACTIONS_LOG_LOAD: 'interactionsLog:load',
+  /** Renderer → main: guardar log de interacciones de un pane */
+  INTERACTIONS_LOG_SAVE: 'interactionsLog:save',
+  /** Renderer → main: eliminar log de interacciones de un pane */
+  INTERACTIONS_LOG_DELETE: 'interactionsLog:delete',
   /** Main → renderer: pedir que el renderer serialice los scrollbacks antes de cerrar */
   APP_SAVE_BEFORE_CLOSE: 'app:saveBeforeClose',
   /** Renderer → main: datos de cierre (scrollbacks) listos para guardar */
