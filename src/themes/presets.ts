@@ -1366,10 +1366,64 @@ export function getThemesForPicker(): AppTheme[] {
   return [...dark, ...light]
 }
 
+/** RGB 0–255 desde `#rgb` o `#rrggbb`; `null` si no es hex válido. */
+function parseHexAccent(s: string): [number, number, number] | null {
+  const t = s.trim()
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(t)
+  if (!m) return null
+  let h = m[1]
+  if (h.length === 3) h = h.split('').map(c => c + c).join('')
+  const n = parseInt(h, 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const lin = (v: number): number => {
+    const x = v / 255
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
+  }
+  const R = lin(r)
+  const G = lin(g)
+  const B = lin(b)
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B
+}
+
+function contrastRatio(lumA: number, lumB: number): number {
+  const hi = Math.max(lumA, lumB)
+  const lo = Math.min(lumA, lumB)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+const ACCENT_FG_CANDIDATES: ReadonlyArray<[[number, number, number], string]> = [
+  [[255, 255, 255], '#f7f7fc'],
+  [[12, 12, 14], '#0c0c0e'],
+]
+
+/**
+ * Color de texto legible sobre `--accent` (WCAG: elige blanco u oscuro con mayor ratio de contraste).
+ */
+function accentForegroundFor(accentCss: string): string {
+  const rgb = parseHexAccent(accentCss)
+  if (!rgb) return '#f7f7fc'
+  const L = relativeLuminance(rgb)
+  let best = '#f7f7fc'
+  let bestRatio = 0
+  for (const [candRgb, hex] of ACCENT_FG_CANDIDATES) {
+    const r = contrastRatio(L, relativeLuminance(candRgb))
+    if (r > bestRatio) {
+      bestRatio = r
+      best = hex
+    }
+  }
+  return best
+}
+
 export function applyTheme(theme: AppTheme): void {
   const root = document.documentElement
   root.dataset.theme = theme.id
   for (const [key, value] of Object.entries(theme.vars)) {
     root.style.setProperty(key, value)
   }
+  const accent = theme.vars['--accent'] ?? theme.xterm.cursor
+  root.style.setProperty('--accent-fg', accentForegroundFor(accent))
 }

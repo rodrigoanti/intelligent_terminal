@@ -40,6 +40,15 @@ import { gatherProjectAiContextForCwd } from './projectAiContext'
 import { readAgentMdForCwd, writeAgentMdForCwd, gatherShallowFolderTree } from './agentMd'
 import { readProjectFile, writeProjectFile } from './agentFileOps'
 import { runAgentShellCommand } from './agentShellOps'
+import {
+  gitCommit,
+  gitDiffForAi,
+  gitGetRepoStatus,
+  gitPull,
+  gitPush,
+  gitStageAll,
+} from './gitSessionOps'
+import { githubActionsListForSession } from './githubActionsOps'
 import { readCdRecentFolders } from './cdRecentMd'
 import {
   clearSessionCdState,
@@ -287,6 +296,29 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.AGENT_SHELL_RUN, (_e, sessionId: string, command: string) => {
     return runAgentShellCommand(projectRootForSession(sessionId), command)
+  })
+
+  ipcMain.handle(IPC.GIT_STATUS, (_e, sessionId: string) => {
+    return gitGetRepoStatus(projectRootForSession(sessionId))
+  })
+  ipcMain.handle(IPC.GIT_DIFF_FOR_AI, (_e, sessionId: string) => {
+    return gitDiffForAi(projectRootForSession(sessionId))
+  })
+  ipcMain.handle(IPC.GIT_PULL, (_e, sessionId: string) => {
+    return gitPull(projectRootForSession(sessionId))
+  })
+  ipcMain.handle(IPC.GIT_PUSH, (_e, sessionId: string) => {
+    return gitPush(projectRootForSession(sessionId))
+  })
+  ipcMain.handle(IPC.GIT_COMMIT, (_e, sessionId: string, message: unknown) => {
+    return gitCommit(projectRootForSession(sessionId), message)
+  })
+  ipcMain.handle(IPC.GIT_STAGE_ALL, (_e, sessionId: string) => {
+    return gitStageAll(projectRootForSession(sessionId))
+  })
+
+  ipcMain.handle(IPC.GITHUB_ACTIONS_LIST, (_e, sessionId: string) => {
+    return githubActionsListForSession(projectRootForSession(sessionId))
   })
 
   ipcMain.handle(IPC.SESSION_LOAD, (): PersistedSession | null => loadSession())

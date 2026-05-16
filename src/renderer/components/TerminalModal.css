@@ -5,7 +5,10 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(0, 0, 0, 0.45);
+  perspective: 1600px;
+  perspective-origin: 50% 42%;
+  background: rgba(0, 0, 0, 0.52);
+  animation: terminal-modal-backdrop-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .terminal-modal-panel {
@@ -17,9 +20,61 @@
   border-radius: var(--radius);
   font-family: var(--font-mono);
   color: var(--text);
-  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.48);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--border) 40%, transparent),
+    0 24px 80px rgba(0, 0, 0, 0.45),
+    0 8px 32px rgba(0, 0, 0, 0.28);
   outline: none;
   overflow: hidden;
+  transform-origin: 50% 60%;
+  transform-style: preserve-3d;
+  animation: terminal-modal-panel-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes terminal-modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes terminal-modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.94) rotateX(5deg);
+    box-shadow:
+      0 0 0 1px transparent,
+      0 8px 24px rgba(0, 0, 0, 0.15),
+      0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotateX(0deg);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--border) 40%, transparent),
+      0 24px 80px rgba(0, 0, 0, 0.45),
+      0 8px 32px rgba(0, 0, 0, 0.28);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-modal-backdrop,
+  .terminal-modal-panel {
+    animation: none;
+  }
+
+  .terminal-modal-backdrop {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .terminal-modal-panel {
+    opacity: 1;
+    transform: none;
+    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.48);
+  }
 }
 
 .terminal-modal-panel--sm {
@@ -36,6 +91,10 @@
 
 .terminal-modal-panel--xl {
   width: min(900px, 98vw);
+}
+
+.terminal-modal-panel--xxl {
+  width: min(1100px, 98vw);
 }
 
 .terminal-modal-header {

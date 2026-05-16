@@ -4,6 +4,11 @@ import { validateConfig, mergeWithDefaults, parseSpotifyPlaylistId } from '@shar
 import { MUSIC_MOODS } from '@shared/musicMoods'
 import { fetchOllamaModelNames } from '@ai/ollamaModels'
 import { TerminalModal } from './TerminalModal'
+import { SettingsSection, SettingsField } from './SettingsSection'
+import { Button } from './ui/Button'
+import { Input } from './ui/Input'
+import { Select } from './ui/Select'
+import { Icon } from './ui/Icon'
 import './SettingsModal.css'
 
 interface Props {
@@ -48,9 +53,7 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     }
   }, [debouncedBaseUrl])
 
-  useEffect(() => {
-    void loadModels()
-  }, [loadModels])
+  useEffect(() => { void loadModels() }, [loadModels])
 
   const selectOptions = useMemo(() => {
     const m = form.defaultModel.trim()
@@ -76,10 +79,7 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     const musicPlaylistIdsByMood: Record<string, string> = { ...(config.musicPlaylistIdsByMood ?? {}) }
     for (const m of MUSIC_MOODS) {
       const raw = (form.musicPlaylistIdsByMood[m.id] ?? '').trim()
-      if (!raw) {
-        delete musicPlaylistIdsByMood[m.id]
-        continue
-      }
+      if (!raw) { delete musicPlaylistIdsByMood[m.id]; continue }
       const id = parseSpotifyPlaylistId(raw)
       if (!id) {
         setErrors([`«${m.label}»: introduce un ID de 22 caracteres o un enlace open.spotify.com/playlist/…`])
@@ -103,12 +103,8 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     const result = await window.api.setConfig(updated)
     setSaving(false)
 
-    if (result.ok) {
-      onSave(updated)
-      onClose()
-    } else {
-      setErrors(result.errors ?? ['Error al guardar'])
-    }
+    if (result.ok) { onSave(updated); onClose() }
+    else setErrors(result.errors ?? ['Error al guardar'])
   }
 
   const showSelect = !modelsError && (modelsLoading || modelsList.length > 0)
@@ -124,149 +120,146 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       bodyClassName="modal-body"
       footer={
         <div className="modal-footer">
-          <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button type="button" className="btn-primary" onClick={() => void handleSave()} disabled={saving}>
+          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" size="sm" onClick={() => void handleSave()} disabled={saving}>
             {saving ? 'Guardando…' : 'Guardar'}
-          </button>
+          </Button>
         </div>
       }
     >
-          <section className="settings-section">
-            <h3 className="settings-section-title">Ollama (IA local)</h3>
+      <SettingsSection title="Ollama (IA local)">
+        <SettingsField
+          label="URL base de Ollama"
+          hint={<>Edita también en <code>~/Library/Application Support/AI Terminal/config.json</code></>}
+        >
+          <Input
+            type="text"
+            value={form.ollamaBaseURL}
+            onChange={e => update('ollamaBaseURL', e.target.value)}
+            placeholder="http://127.0.0.1:11434"
+            spellCheck={false}
+          />
+        </SettingsField>
 
-            <label className="settings-label">
-              URL base de Ollama
-              <input
+        <SettingsField
+          label="Modelo por defecto"
+          hint={
+            showSelect
+              ? <>Modelos detectados con <code>GET /api/tags</code>. Si no aparece uno, cambia la URL y pulsa «Actualizar lista».</>
+              : <>Escribe el nombre del modelo (Ollama no respondió o no hay modelos instalados).</>
+          }
+        >
+          <div className="model-row">
+            {showSelect && (
+              <Select
+                value={form.defaultModel}
+                disabled={modelsLoading}
+                onChange={e => update('defaultModel', e.target.value)}
+                aria-busy={modelsLoading}
+              >
+                {modelsLoading && <option value={form.defaultModel}>Cargando modelos…</option>}
+                {!modelsLoading && selectOptions.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </Select>
+            )}
+            {modelsError && (
+              <p className="settings-model-error" role="alert">
+                No se pudo listar modelos: {modelsError}
+              </p>
+            )}
+            {showManualInput && (
+              <Input
                 type="text"
-                value={form.ollamaBaseURL}
-                onChange={e => update('ollamaBaseURL', e.target.value)}
-                placeholder="http://127.0.0.1:11434"
+                value={form.defaultModel}
+                onChange={e => update('defaultModel', e.target.value)}
+                placeholder="Nombre del modelo (p. ej. llama3.2:latest)"
                 spellCheck={false}
+                aria-label="Nombre del modelo"
               />
-              <span className="settings-hint">
-                Edita también en <code>~/Library/Application Support/AI Terminal/config.json</code>
-              </span>
-            </label>
-
-            <label className="settings-label">
-              Modelo por defecto
-              <div className="model-row">
-                {showSelect && (
-                  <select
-                    className="model-select"
-                    value={form.defaultModel}
-                    disabled={modelsLoading}
-                    onChange={e => update('defaultModel', e.target.value)}
-                    aria-busy={modelsLoading}
-                  >
-                    {modelsLoading && (
-                      <option value={form.defaultModel}>Cargando modelos…</option>
-                    )}
-                    {!modelsLoading &&
-                      selectOptions.map(name => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                  </select>
-                )}
-                {modelsError && (
-                  <p className="settings-model-error" role="alert">
-                    No se pudo listar modelos: {modelsError}
-                  </p>
-                )}
-                {showManualInput && (
-                  <input
-                    type="text"
-                    className="model-manual-input"
-                    value={form.defaultModel}
-                    onChange={e => update('defaultModel', e.target.value)}
-                    placeholder="Nombre del modelo (p. ej. llama3.2:latest)"
-                    spellCheck={false}
-                    aria-label="Nombre del modelo"
-                  />
-                )}
-                <button type="button" className="model-refresh-btn" onClick={() => void loadModels()} disabled={modelsLoading}>
-                  {modelsLoading ? 'Actualizando…' : 'Actualizar lista'}
-                </button>
-              </div>
-              <span className="settings-hint">
-                {showSelect
-                  ? <>Modelos detectados con <code>GET /api/tags</code>. Si no aparece uno, cambia la URL y pulsa «Actualizar lista».</>
-                  : <>Escribe el nombre del modelo (Ollama no respondió o no hay modelos instalados).</>}
-              </span>
-            </label>
-
-            <label className="settings-label">
-              Líneas de contexto (scrollback)
-              <input
-                type="number"
-                min={10}
-                max={2000}
-                value={form.maxContextLines}
-                onChange={e => update('maxContextLines', e.target.value)}
-              />
-              <span className="settings-hint">Cuántas líneas del terminal se envían al modelo como contexto.</span>
-            </label>
-
-            <p className="settings-hint settings-hint--block">
-              Modo agente y ejecución de comandos shell se controlan en la cabecera del panel de IA de cada terminal
-              (interruptor «agente» y menú de política shell).
-            </p>
-          </section>
-
-          <section className="settings-section">
-            <h3 className="settings-section-title">Spotify (barra de título)</h3>
-            <p className="settings-hint settings-hint--block">
-              IDs de playlist (22 caracteres de{' '}
-              <code>open.spotify.com/playlist/…</code>). Requiere Spotify de escritorio. El nombre del mood avanza al
-              pulsarlo y la reproducción se pausa; pulsa play para reproducir la playlist del mood mostrado.
-            </p>
-            <div className="settings-spotify-grid">
-              {MUSIC_MOODS.map(m => (
-                <div key={m.id} className="settings-spotify-row">
-                  <label className="settings-label settings-label--compact" htmlFor={`settings-pl-${m.id}`}>
-                    {m.label}
-                    <input
-                      id={`settings-pl-${m.id}`}
-                      type="text"
-                      placeholder="p. ej. 37i9dQZF1DX4sWSpwq3LiO"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={form.musicPlaylistIdsByMood[m.id] ?? ''}
-                      onChange={e => updatePlaylistMood(m.id, e.target.value)}
-                    />
-                  </label>
-                </div>
-              ))}
-            </div>
-            <span className="settings-hint">
-              Puedes pegar el ID de 22 caracteres o el enlace completo de la playlist; al guardar se guarda solo el ID.
-            </span>
-          </section>
-
-          <section className="settings-section">
-            <h3 className="settings-section-title">Archivo de configuración</h3>
-            <p className="settings-hint settings-hint--block">
-              Los ajustes se guardan en <code>config.json</code> dentro de la carpeta de datos de la aplicación.
-              Puedes editarlo directamente con cualquier editor de texto.
-            </p>
-            <button
-              className="reveal-btn"
-              onClick={() => window.api.openConfigFolder()}
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadModels()}
+              disabled={modelsLoading}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
-              Revelar carpeta de configuración en Finder
-            </button>
-          </section>
+              {modelsLoading ? 'Actualizando…' : 'Actualizar lista'}
+            </Button>
+          </div>
+        </SettingsField>
 
-          {errors.length > 0 && (
-            <div className="settings-errors">
-              {errors.map((e, i) => <p key={i}>{e}</p>)}
+        <SettingsField
+          label="Líneas de contexto (scrollback)"
+          hint="Cuántas líneas del terminal se envían al modelo como contexto."
+        >
+          <Input
+            type="number"
+            min={10}
+            max={2000}
+            value={form.maxContextLines}
+            onChange={e => update('maxContextLines', e.target.value)}
+          />
+        </SettingsField>
+
+        <p className="settings-hint settings-hint--block">
+          Modo agente y ejecución de comandos shell se controlan en la cabecera del panel de IA de cada terminal
+          (interruptor «agente» y menú de política shell).
+        </p>
+      </SettingsSection>
+
+      <SettingsSection title="Spotify (barra de título)">
+        <p className="settings-hint settings-hint--block">
+          IDs de playlist (22 caracteres de{' '}
+          <code>open.spotify.com/playlist/…</code>). Requiere Spotify de escritorio. El nombre del mood avanza al
+          pulsarlo y la reproducción se pausa; pulsa play para reproducir la playlist del mood mostrado.
+        </p>
+        <div className="settings-spotify-grid">
+          {MUSIC_MOODS.map(m => (
+            <div key={m.id} className="settings-spotify-row">
+              <SettingsField
+                label={m.label}
+                htmlFor={`settings-pl-${m.id}`}
+                compact
+              >
+                <Input
+                  id={`settings-pl-${m.id}`}
+                  type="text"
+                  placeholder="p. ej. 37i9dQZF1DX4sWSpwq3LiO"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={form.musicPlaylistIdsByMood[m.id] ?? ''}
+                  onChange={e => updatePlaylistMood(m.id, e.target.value)}
+                />
+              </SettingsField>
             </div>
-          )}
+          ))}
+        </div>
+        <span className="settings-hint">
+          Puedes pegar el ID de 22 caracteres o el enlace completo de la playlist; al guardar se guarda solo el ID.
+        </span>
+      </SettingsSection>
+
+      <SettingsSection title="Archivo de configuración">
+        <p className="settings-hint settings-hint--block">
+          Los ajustes se guardan en <code>config.json</code> dentro de la carpeta de datos de la aplicación.
+          Puedes editarlo directamente con cualquier editor de texto.
+        </p>
+        <button
+          type="button"
+          className="reveal-btn"
+          onClick={() => window.api.openConfigFolder()}
+        >
+          <Icon name="folder" size={12} />
+          Revelar carpeta de configuración en Finder
+        </button>
+      </SettingsSection>
+
+      {errors.length > 0 && (
+        <div className="settings-errors">
+          {errors.map((e, i) => <p key={i}>{e}</p>)}
+        </div>
+      )}
     </TerminalModal>
   )
 }

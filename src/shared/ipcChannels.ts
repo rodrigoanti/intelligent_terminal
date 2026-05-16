@@ -49,6 +49,18 @@ export const IPC = {
   /** Renderer → main (invoke): ejecutar una línea de shell en el cwd de la sesión (modo agente) */
   AGENT_SHELL_RUN: 'agentShell:run',
 
+  /** Renderer → main (invoke): estado git del cwd de la sesión */
+  GIT_STATUS: 'git:status',
+  /** Renderer → main (invoke): texto truncado para sugerir mensaje de commit (IA) */
+  GIT_DIFF_FOR_AI: 'git:diffForAi',
+  GIT_PULL: 'git:pull',
+  GIT_PUSH: 'git:push',
+  GIT_COMMIT: 'git:commit',
+  GIT_STAGE_ALL: 'git:stageAll',
+
+  /** Renderer → main (invoke): workflow runs de GitHub Actions vía gh CLI */
+  GITHUB_ACTIONS_LIST: 'githubActions:list',
+
   // ─── Persistencia de sesión ────────────────────────────────────────────────
   /** Renderer → main: guardar layout de pestañas + cwds */
   SESSION_SAVE: 'session:save',

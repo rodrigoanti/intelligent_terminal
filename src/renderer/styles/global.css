@@ -13,6 +13,8 @@
   --text-muted: #7878a8;
   --accent: #7c6af7;
   --accent-dim: #4a3fbe;
+  /** Texto sobre fondo `--accent` (p. ej. botón primario); lo recalcula `applyTheme()`. */
+  --accent-fg: #f7f7fc;
   --danger: #f87171;
   --tab-active-bg: #1a1a28;
   --tab-inactive-bg: #0d0d14;

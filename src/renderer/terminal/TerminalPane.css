@@ -6,6 +6,11 @@
   flex-direction: column;
   background: var(--bg);
   position: relative;
+  --pane-toolbar-reserve: 0px;
+}
+
+.terminal-pane:has(.pane-toolbar) {
+  --pane-toolbar-reserve: 36px;
 }
 
 /* Dock IA: posición absoluta encima de la terminal; expandido ocupa ~85% del alto del pane */
@@ -32,7 +37,7 @@
   max-height: none;
   border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
   box-shadow:
-    0 -6px 18px color-mix(in srgb, black 34%, transparent),
+    0 -3px 10px color-mix(in srgb, black 18%, transparent),
     0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent);
 }
 
@@ -47,8 +52,7 @@
   border-top: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
   box-shadow:
     0 -1px 0 color-mix(in srgb, var(--border) 50%, transparent),
-    0 -10px 32px color-mix(in srgb, black 42%, transparent),
-    0 -22px 56px color-mix(in srgb, black 26%, transparent);
+    0 -6px 16px color-mix(in srgb, black 22%, transparent);
 }
 
 .terminal-pane--inactive-pane .terminal-pane-main,
@@ -59,12 +63,42 @@
 
 .pane-toolbar {
   position: absolute;
-  top: 5px;
-  right: 6px;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 40;
   display: flex;
   flex-direction: row;
-  gap: 3px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 5px 8px 6px;
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--bg) 52%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.12);
+  backdrop-filter: blur(14px) saturate(1.12);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 42%, transparent);
+  border-radius: 0;
+  /* Siempre aspecto «sin foco» (antes solo en .terminal-pane--inactive-pane) */
+  opacity: 0.72;
+}
+
+.pane-toolbar__group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pane-toolbar__group--start {
+  flex-shrink: 1;
+}
+
+.pane-toolbar__group--end {
+  flex-shrink: 0;
 }
 
 .pane-toolbar-reorder-handle {
@@ -74,14 +108,6 @@
 
 .pane-toolbar-reorder-handle:active {
   cursor: grabbing;
-}
-
-.terminal-pane--inactive-pane .pane-toolbar {
-  opacity: 0.72;
-}
-
-.terminal-pane--inactive-pane .pane-toolbar:hover {
-  opacity: 1;
 }
 
 /* Botones flotantes del panel: compactos, estilo terminal moderno */
@@ -116,7 +142,8 @@
 }
 
 
-.pane-toolbar-btn--folder:hover {
+.pane-toolbar-btn--folder:hover,
+.pane-toolbar-btn--git:hover {
   color: var(--accent);
 }
 
@@ -165,6 +192,8 @@
   display: flex;
   flex-direction: column;
   padding: 10px;
+  /* La barra del panel es absolute; reservar su altura para no tapar la 1ª línea */
+  padding-top: calc(10px + var(--pane-toolbar-reserve));
   overflow: hidden;
 }
 

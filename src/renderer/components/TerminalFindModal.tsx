@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { TerminalModal } from './TerminalModal'
+import { Button } from './ui/Button'
+import { Input } from './ui/Input'
 import type { TerminalBufferFindMatch } from '@renderer/terminal/terminalFindInBuffer'
 import './TerminalFindModal.css'
 
@@ -85,9 +87,9 @@ export const TerminalFindModal: React.FC<Props> = ({
           <span className="terminal-find-footer-note">
             {hasSearched ? `${bufferMatches.length} en buffer · ${historyMatches.length} en historial` : '⌘F / Ctrl+F'}
           </span>
-          <button type="button" className="terminal-find-close-footer" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose}>
             cerrar
-          </button>
+          </Button>
         </>
       }
     >
@@ -99,10 +101,9 @@ export const TerminalFindModal: React.FC<Props> = ({
           texto (salida, scrollback e historial de comandos de esta terminal)
         </label>
         <div className="terminal-find-input-row">
-          <input
+          <Input
             ref={inputRef}
             id="terminal-find-input"
-            className="terminal-find-input"
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
@@ -111,9 +112,9 @@ export const TerminalFindModal: React.FC<Props> = ({
             spellCheck={false}
             aria-describedby="terminal-find-desc"
           />
-          <button type="button" className="terminal-find-submit" onClick={submit}>
+          <Button variant="primary" size="sm" onClick={submit}>
             buscar
-          </button>
+          </Button>
         </div>
       </div>
       <p className="terminal-find-hint">
@@ -121,9 +122,7 @@ export const TerminalFindModal: React.FC<Props> = ({
         No distingue mayúsculas. Pulsa Enter o «buscar».
       </p>
 
-      {noMatchesAfterSearch && (
-        <p className="terminal-find-empty">Sin coincidencias.</p>
-      )}
+      {noMatchesAfterSearch && <p className="terminal-find-empty">Sin coincidencias.</p>}
 
       {bufferMatches.length > 0 && (
         <section className="terminal-find-section" aria-label="Coincidencias en la salida">

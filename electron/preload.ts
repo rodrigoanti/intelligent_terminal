@@ -4,6 +4,8 @@ import type { AppConfig } from '../src/shared/configSchema'
 import type { ProjectAiContextForAi } from '../src/shared/projectAiContext'
 import type { PersistedSession, ChatEntry } from './persistence'
 import type { SpotifyPlaybackState } from './spotifyNative'
+import type { GitCommandResult, GitDiffForAiPayload, GitRepoStatus } from '../src/shared/gitSessionTypes'
+import type { GitHubActionsSnapshot } from '../src/shared/githubActionsTypes'
 
 const api = {
   // ─── PTY ───────────────────────────────────────────────────────────────────
@@ -148,6 +150,34 @@ const api = {
     | { ok: false; error: string }
   > {
     return ipcRenderer.invoke(IPC.AGENT_SHELL_RUN, sessionId, command)
+  },
+
+  gitStatus(sessionId: string): Promise<GitRepoStatus> {
+    return ipcRenderer.invoke(IPC.GIT_STATUS, sessionId)
+  },
+
+  gitDiffForAi(sessionId: string): Promise<GitDiffForAiPayload> {
+    return ipcRenderer.invoke(IPC.GIT_DIFF_FOR_AI, sessionId)
+  },
+
+  gitPull(sessionId: string): Promise<GitCommandResult> {
+    return ipcRenderer.invoke(IPC.GIT_PULL, sessionId)
+  },
+
+  gitPush(sessionId: string): Promise<GitCommandResult> {
+    return ipcRenderer.invoke(IPC.GIT_PUSH, sessionId)
+  },
+
+  gitCommit(sessionId: string, message: string): Promise<GitCommandResult> {
+    return ipcRenderer.invoke(IPC.GIT_COMMIT, sessionId, message)
+  },
+
+  gitStageAll(sessionId: string): Promise<GitCommandResult> {
+    return ipcRenderer.invoke(IPC.GIT_STAGE_ALL, sessionId)
+  },
+
+  githubActionsList(sessionId: string): Promise<GitHubActionsSnapshot> {
+    return ipcRenderer.invoke(IPC.GITHUB_ACTIONS_LIST, sessionId)
   },
 
   // ─── Persistencia ────────────────────────────────────────────────────────

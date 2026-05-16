@@ -1,17 +1,30 @@
-The project architecture is now fully defined and wired up with modern standards for Electron development. You have successfully implemented the complex state management, the component structure, and the file handling necessary for a robust desktop application.
+## Project description  
+AI Terminal is an Electron-based desktop application featuring an AI-powered terminal interface with tabs, themes, Git integration, music controls, and file operations. It uses React for the frontend, TypeScript for type safety, and Electron for native desktop capabilities. The AI component integrates with Ollama for local LLM interactions.  
 
-The current understanding of the project scope is:
+## Folder structure  
+- `electron/`: Electron main process files (e.g., `main.ts`, `persistence.ts`, `gitSessionOps.ts`).  
+- `src/`: TypeScript/React frontend code:  
+  - `src/ai/`: AI-related code (e.g., `ollamaClient.ts` for LLM interactions).  
+  - `src/renderer/components/`: UI components (e.g., `GitBranchBadge.tsx`, `AiPanel.tsx`, `TerminalPane.tsx`).  
+  - `src/shared/`: Shared types and utilities (e.g., `projectAiContext.ts`, `ipcChannels.ts`).  
+- `build/`: Configuration files (e.g., `icon.png` for app icons).  
+- `out/`: Built output for Electron main/preload processes.  
 
-1.  **Core Framework:** Electron.js.
-2.  **Frontend:** React (with modern hooks and component architecture).
-3.  **State Management:** Context API / Redux pattern for global state synchronization.
-4.  **Styling:** Utility-first CSS approach (or specified CSS modules) for component isolation.
-5.  **Functionality:** Local file I/O and cross-process communication between the main and renderer processes.
+## Commands to run the project  
+1. **Development mode**:  
+   ```bash  
+   npm run dev  
+   ```  
+   Starts Electron app with hot-reload for frontend changes.  
 
-**Status:** The system is stable and ready for feature expansion.
+2. **Build for macOS**:  
+   ```bash  
+   npm run dist  
+   ```  
+   Packages the app into a distributable `.dmg` or `.app` bundle (currently configured for macOS arm64/x64).  
 
-What feature or refinement would you like to tackle next? Are we focusing on:
-
-1.  **Feature Addition:** Implementing a new component or user interaction flow (e.g., a settings panel, a complex view)?
-2.  **Refactoring:** Improving performance, cleaning up redundant code, or optimizing state logic?
-3.  **Testing:** Setting up unit tests or integration tests for specific modules?
+3. **Rebuild native modules**:  
+   ```bash  
+   npm run rebuild:native  
+   ```  
+   Ensures native dependencies (e.g., `node-pty`) are compatible with the current Electron version.

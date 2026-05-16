@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react'
+import { Icon } from './ui/Icon'
 import './TerminalModal.css'
 
-export type TerminalModalSize = 'sm' | 'md' | 'lg' | 'xl'
+export type TerminalModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
 
 export interface TerminalModalProps {
   open: boolean
@@ -82,11 +83,14 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
           <header className="terminal-modal-header">
             <h2 className="terminal-modal-title" id={titleId}>{title}</h2>
             {showHeaderClose && (
-              <button type="button" className="terminal-modal-header-close" onClick={onClose} title="Cerrar (Esc)" aria-label="Cerrar">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
+              <button
+                type="button"
+                className="terminal-modal-header-close"
+                onClick={onClose}
+                title="Cerrar (Esc)"
+                aria-label="Cerrar"
+              >
+                <Icon name="close" size={12} />
               </button>
             )}
           </header>

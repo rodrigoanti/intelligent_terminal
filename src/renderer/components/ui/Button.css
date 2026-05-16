@@ -1,0 +1,100 @@
+/* ── Base ─────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  border: none;
+  border-radius: calc(var(--radius) / 2);
+  outline: none;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ── Variants ─────────────────────────────────────── */
+.btn--primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: 5px 12px;
+}
+
+.btn--primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.btn--secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--text-muted);
+  padding: 2px 6px;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.btn--danger {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 3px 7px;
+}
+
+.btn--danger:hover:not(:disabled) {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+
+/* ── Sizes ────────────────────────────────────────── */
+.btn--xs {
+  font-size: 11px;
+  padding: 2px 5px;
+  gap: 3px;
+}
+
+.btn--sm {
+  font-size: 12px;
+  padding: 4px 9px;
+}
+
+.btn--md {
+  font-size: 12px;
+  padding: 5px 12px;
+}
+
+/* Size overrides for variants that define their own padding */
+.btn--primary.btn--xs { padding: 2px 8px; }
+.btn--secondary.btn--xs { padding: 2px 8px; }
+.btn--danger.btn--xs { padding: 2px 6px; }
+.btn--primary.btn--sm { padding: 4px 10px; }
+.btn--secondary.btn--sm { padding: 4px 10px; }

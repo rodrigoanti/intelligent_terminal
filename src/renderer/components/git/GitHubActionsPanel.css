@@ -1,0 +1,215 @@
+.gh-actions-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border-left: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 18%, var(--bg-secondary));
+}
+
+.gh-actions-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  flex-shrink: 0;
+}
+
+.gh-actions-panel__title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.gh-actions-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 10px;
+}
+
+.gh-actions-panel__loading {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0;
+}
+
+.gh-actions-panel__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.gh-actions-panel__error {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  padding: 8px;
+  border-radius: calc(var(--radius) / 2);
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--border));
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+}
+
+.gh-actions-panel__error p {
+  margin: 0 0 6px;
+}
+
+.gh-actions-panel__error p:last-child {
+  margin-bottom: 0;
+}
+
+.gh-actions-panel__error-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.gh-actions-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gh-actions-panel__footer {
+  flex-shrink: 0;
+  padding: 8px 12px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  text-align: center;
+}
+
+.gh-actions-panel__link {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gh-actions-panel__link:hover {
+  opacity: 0.88;
+}
+
+.gh-actions-run-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border-radius: calc(var(--radius) / 2);
+  background: color-mix(in srgb, var(--bg) 55%, var(--surface));
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.gh-actions-run-row:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface) 70%, var(--bg));
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+}
+
+.gh-actions-run-row:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.gh-actions-run-row__dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.gh-actions-run-row__dot--success {
+  background: color-mix(in srgb, #34d399 85%, var(--text));
+}
+
+.gh-actions-run-row__dot--failure {
+  background: color-mix(in srgb, #fb7185 90%, var(--text));
+}
+
+.gh-actions-run-row__dot--cancelled {
+  background: var(--text-muted);
+  opacity: 0.55;
+}
+
+.gh-actions-run-row__dot--running {
+  background: var(--accent);
+  animation: gh-actions-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes gh-actions-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+.gh-actions-run-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gh-actions-run-row__title {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gh-actions-run-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.gh-actions-run-row__branch {
+  color: color-mix(in srgb, var(--accent) 50%, var(--text-muted));
+}
+
+.gh-actions-run-row__status {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  max-width: 4.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gh-actions-run-row__status--success {
+  color: color-mix(in srgb, #34d399 80%, var(--text));
+}
+
+.gh-actions-run-row__status--failure {
+  color: color-mix(in srgb, #fb7185 85%, var(--text));
+}
+
+.gh-actions-run-row__status--running {
+  color: var(--accent);
+}

@@ -1,0 +1,45 @@
+.select {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface) 42%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.2;
+  outline: none;
+  transition: color 0.12s, border-color 0.12s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.select--sm {
+  font-size: 0.75rem;
+  padding: 3px 5px;
+  max-width: 11rem;
+}
+
+.select--md {
+  font-size: 13px;
+  padding: 6px 10px;
+  width: 100%;
+  border-radius: calc(var(--radius) / 2);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.select:hover:not(:disabled) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.select:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}

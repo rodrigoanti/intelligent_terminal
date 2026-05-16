@@ -10,12 +10,18 @@ import { feedCompletedUserLines } from '@renderer/history/feedCompletedUserLines
 import { stripLeadingShellPrompts } from '@renderer/terminal/stripShellPromptPrefix'
 import { AiPanel } from '@renderer/components/AiPanel'
 import { ConfirmTerminalModal } from '@renderer/components/ConfirmTerminalModal'
+import { GitPanelModal } from '@renderer/components/GitPanelModal'
 import { TerminalFindModal } from '@renderer/components/TerminalFindModal'
 import {
   findMatchesInCommandHistory,
   findMatchesInTerminalBuffer,
   type TerminalBufferFindMatch,
 } from '@renderer/terminal/terminalFindInBuffer'
+import { PaneToolbar } from './PaneToolbar'
+import { CdSuggest } from './CdSuggest'
+import { CmdSuggest } from './CmdSuggest'
+import { TerminalScrollDown } from './TerminalScrollDown'
+import { SplitPaneButton } from './SplitPaneButton'
 import '@xterm/xterm/css/xterm.css'
 import './TerminalPane.css'
 
@@ -147,10 +153,6 @@ function getMatchedCmd(trimmedDraft: string): string | null {
   return null
 }
 
-/**
- * Filtra snippets del comando activo por prefijo de la línea completa que el usuario escribió
- * (insensible a mayúsculas). Así `npm run dev` no muestra `npm run build` ni `npm run test`.
- */
 function filterCmdSnippetsByDraft(all: CmdSnippet[], trimmedDraft: string): CmdSnippet[] {
   const d = trimmedDraft.trimStart().toLowerCase()
   if (!d) return all
@@ -190,54 +192,9 @@ function filterExecutedRecentsByDraft(recent: string[], draft: string, limit: nu
   return out
 }
 
-interface CmdSuggestHighlightParts {
-  before: string
-  match: string
-  after: string
-}
 
-/**
- * Parte el texto mostrado para resaltar el borrador: prefijo común (insensible
- * a mayúsculas) o, si no hay, primera aparición del borrador (caso recientes con includes).
- */
-function splitCmdSuggestHighlight(display: string, draft: string): CmdSuggestHighlightParts | null {
-  const d = draft.trim()
-  if (!d) return null
-  const dl = d.toLowerCase()
-  const fl = display.toLowerCase()
-  let n = 0
-  while (
-    n < display.length &&
-    n < d.length &&
-    display[n].toLowerCase() === d[n].toLowerCase()
-  ) {
-    n++
-  }
-  if (n > 0) {
-    return { before: '', match: display.slice(0, n), after: display.slice(n) }
-  }
-  const i = fl.indexOf(dl)
-  if (i >= 0) {
-    const end = i + d.length
-    return { before: display.slice(0, i), match: display.slice(i, end), after: display.slice(end) }
-  }
-  return null
-}
 
-function CmdSuggestHighlightedLabel({ display, draft }: { display: string; draft: string }): React.ReactElement {
-  const parts = splitCmdSuggestHighlight(display, draft)
-  if (!parts) {
-    return <span className="cmd-suggest-label">{display}</span>
-  }
-  const { before, match, after } = parts
-  return (
-    <span className="cmd-suggest-label">
-      {before !== '' ? <span className="cmd-suggest-label__rest">{before}</span> : null}
-      <span className="cmd-suggest-label__typed">{match}</span>
-      {after !== '' ? <span className="cmd-suggest-label__rest">{after}</span> : null}
-    </span>
-  )
-}
+
 
 /**
  * Ajusta columnas/filas al contenedor sin “saltar” el scroll: si el usuario estaba
@@ -358,6 +315,10 @@ interface Props {
   onBusyChange?: (busy: boolean) => void
   /** Actualizar partes de la configuración global (p. ej. modo agente) */
   onConfigPatch?: (partial: Partial<AppConfig>) => void | Promise<void>
+  /**
+   * Registra la misma confirmación que la cruz del panel para cierres por atajo (⌘W desde `App`).
+   */
+  registerShortcutCloseInterceptor?: (openConfirm: () => void) => () => void
 }
 
 export const TerminalPane: React.FC<Props> = ({
@@ -375,6 +336,7 @@ export const TerminalPane: React.FC<Props> = ({
   onTitleChange,
   onRegisterRef,
   onBusyChange,
+  registerShortcutCloseInterceptor,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -409,6 +371,20 @@ export const TerminalPane: React.FC<Props> = ({
 
   const [aiSelectedText, setAiSelectedText] = useState('')
   const [confirmClosePaneOpen, setConfirmClosePaneOpen] = useState(false)
+  const registerShortcutInterceptorRef = useRef(registerShortcutCloseInterceptor)
+  registerShortcutInterceptorRef.current = registerShortcutCloseInterceptor
+
+  const hasClosePaneAction = Boolean(paneToolbar?.onClosePane)
+  useEffect(() => {
+    if (!hasClosePaneAction) return
+    const reg = registerShortcutInterceptorRef.current
+    if (!reg) return
+    return reg(() => {
+      setConfirmClosePaneOpen(true)
+    })
+  }, [hasClosePaneAction])
+
+  const [gitPanelOpen, setGitPanelOpen] = useState(false)
   const [findModalOpen, setFindModalOpen] = useState(false)
   const [findModalBuffer, setFindModalBuffer] = useState<TerminalBufferFindMatch[]>([])
   const [findModalHistory, setFindModalHistory] = useState<string[]>([])
@@ -1114,89 +1090,40 @@ export const TerminalPane: React.FC<Props> = ({
         tabActive && isActivePane ? 'terminal-pane--focused' : '',
         tabActive && !isActivePane ? 'terminal-pane--inactive-pane' : '',
       ].filter(Boolean).join(' ')}
-      style={
-        {
-          ['--terminal-pane-ai-chat-zoom' as string]: String(aiChatZoom),
-        } as React.CSSProperties
-      }
+      style={{ ['--terminal-pane-ai-chat-zoom' as string]: String(aiChatZoom) } as React.CSSProperties}
     >
       {tabActive && (
-        <div className="pane-toolbar" onMouseDown={onTerminalChromePointerDown}>
-          {(() => {
-            const pr = paneToolbar?.paneReorder
-            if (!pr?.enabled) return null
-            return (
-              <span
-                role="button"
-                tabIndex={-1}
-                draggable
-                className="pane-toolbar-reorder-handle terminal-chrome-btn"
-                title="Reordenar panel"
-                aria-label="Reordenar panel"
-                aria-grabbed={pr.isGrabbed}
-                onMouseDown={e => {
-                  /* No preventDefault: en Chromium cancela el inicio del drag nativo. */
-                  e.stopPropagation()
-                }}
-                onDragStart={e => {
-                  onRequestPaneFocusRef.current?.()
-                  pr.onDragHandleStart(e)
-                }}
-                onDragEnd={() => {
-                  pr.onDragHandleEnd()
-                  queueMicrotask(() => { termRef.current?.focus() })
-                }}
-              >
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                  <circle cx="8" cy="6" r="1.35"/>
-                  <circle cx="16" cy="6" r="1.35"/>
-                  <circle cx="8" cy="12" r="1.35"/>
-                  <circle cx="16" cy="12" r="1.35"/>
-                  <circle cx="8" cy="18" r="1.35"/>
-                  <circle cx="16" cy="18" r="1.35"/>
-                </svg>
-              </span>
-            )
-          })()}
-          <button
-            type="button"
-            tabIndex={-1}
-            className="pane-toolbar-btn pane-toolbar-btn--folder terminal-chrome-btn"
-            title="Abrir carpeta de esta terminal en el Finder"
-            aria-label="Abrir carpeta de esta terminal en el Finder"
-            onMouseDown={onTerminalChromePointerDown}
-            onClick={() => {
-              onRequestPaneFocusRef.current?.()
-              void openThisPaneFolderInFinder()
-              queueMicrotask(() => { termRef.current?.focus() })
-            }}
-          >
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-          </button>
-          {paneToolbar?.onClosePane && (
-            <button
-              type="button"
-              tabIndex={-1}
-              className="pane-toolbar-btn pane-toolbar-btn--close terminal-chrome-btn"
-              title="Cerrar este panel"
-              onMouseDown={onTerminalChromePointerDown}
-              onClick={() => {
-                onRequestPaneFocusRef.current?.()
-                setConfirmClosePaneOpen(true)
-                queueMicrotask(() => { termRef.current?.focus() })
-              }}
-            >
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          )}
-        </div>
+        <PaneToolbar
+          showReorderHandle={!!paneToolbar?.paneReorder?.enabled}
+          isGrabbed={paneToolbar?.paneReorder?.isGrabbed ?? false}
+          showClosePane={!!paneToolbar?.onClosePane}
+          onDragHandleStart={e => {
+            onRequestPaneFocusRef.current?.()
+            paneToolbar?.paneReorder?.onDragHandleStart(e)
+          }}
+          onDragHandleEnd={() => {
+            paneToolbar?.paneReorder?.onDragHandleEnd()
+            queueMicrotask(() => { termRef.current?.focus() })
+          }}
+          onClosePane={() => {
+            onRequestPaneFocusRef.current?.()
+            setConfirmClosePaneOpen(true)
+            queueMicrotask(() => { termRef.current?.focus() })
+          }}
+          onOpenGitPanel={() => {
+            onRequestPaneFocusRef.current?.()
+            setGitPanelOpen(true)
+            queueMicrotask(() => { termRef.current?.focus() })
+          }}
+          onOpenFolderInFinder={() => {
+            onRequestPaneFocusRef.current?.()
+            void openThisPaneFolderInFinder()
+            queueMicrotask(() => { termRef.current?.focus() })
+          }}
+          onPointerDown={onTerminalChromePointerDown}
+        />
       )}
-      {/* Terminal body */}
+
       <div className="terminal-pane-body">
         <div
           className="terminal-pane-main"
@@ -1207,176 +1134,53 @@ export const TerminalPane: React.FC<Props> = ({
           }}
         >
           <div ref={containerRef} className="terminal-container" />
-          {terminalScrollDownVisible && shellOrToolbarFocused && (
-            <button
-              type="button"
-              tabIndex={-1}
-              className="terminal-scroll-down-btn terminal-chrome-btn"
-              title="Ir a la salida más reciente"
-              aria-label="Ir a la salida más reciente"
-              onMouseDown={onTerminalChromePointerDown}
-              onClick={() => {
-                onRequestPaneFocusRef.current?.()
-                termRef.current?.scrollToBottom()
-                termRef.current?.focus()
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M6 9l6 6 6-6"/>
-              </svg>
-            </button>
-          )}
-          {onRequestSplitPane && shellOrToolbarFocused && (
-            <button
-              type="button"
-              tabIndex={-1}
-              className="terminal-split-corner-btn terminal-chrome-btn"
-              title="Añadir terminal en esta pestaña (hasta 4) · ⌘Y"
-              aria-label="Añadir terminal en esta pestaña"
-              onMouseDown={onTerminalChromePointerDown}
-              onClick={() => {
-                onRequestPaneFocusRef.current?.()
-                onRequestSplitPane()
-                termRef.current?.focus()
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-            </button>
-          )}
+
+          <TerminalScrollDown
+            visible={terminalScrollDownVisible && shellOrToolbarFocused}
+            onPointerDown={onTerminalChromePointerDown}
+            onClick={() => {
+              onRequestPaneFocusRef.current?.()
+              termRef.current?.scrollToBottom()
+              termRef.current?.focus()
+            }}
+          />
+
+          <SplitPaneButton
+            visible={!!onRequestSplitPane && shellOrToolbarFocused}
+            onPointerDown={onTerminalChromePointerDown}
+            onClick={() => {
+              onRequestPaneFocusRef.current?.()
+              onRequestSplitPane?.()
+              termRef.current?.focus()
+            }}
+          />
         </div>
 
         {(showCdSuggestPanel || showCmdSuggestPanel) && (
           <div className="terminal-suggest-stack">
             {showCdSuggestPanel && (
-              <div className="cd-suggest" role="listbox" aria-label="Sugerencias de directorio">
-                {visibleLocalDirs.length > 0 && (
-                  <>
-                    <div className="cd-suggest-section-title">ubicación actual</div>
-                    {visibleLocalDirs.map(d => (
-                      <button
-                        key={`local:${d}`}
-                        type="button"
-                        className="cd-suggest-item"
-                        onMouseDown={e => { e.preventDefault(); handleCdLocalPick(d) }}
-                        role="option"
-                      >
-                        <span className="cd-suggest-folder-icon" aria-hidden="true">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
-                          </svg>
-                        </span>
-                        <span className="cd-suggest-path">{d}</span>
-                      </button>
-                    ))}
-                  </>
-                )}
-                {visiblePaths.length > 0 && (
-                  <>
-                    <div className="cd-suggest-section-title">ubicaciones recientes</div>
-                    {visiblePaths.map(p => (
-                      <button
-                        key={`recent:${p}`}
-                        type="button"
-                        className="cd-suggest-item"
-                        onMouseDown={e => { e.preventDefault(); handleCdPick(p) }}
-                        role="option"
-                      >
-                        <span className="cd-suggest-prompt">~›</span>
-                        <span className="cd-suggest-path">{p}</span>
-                      </button>
-                    ))}
-                  </>
-                )}
-              </div>
+              <CdSuggest
+                visibleLocalDirs={visibleLocalDirs}
+                visiblePaths={visiblePaths}
+                onPickLocal={handleCdLocalPick}
+                onPickRecent={handleCdPick}
+              />
             )}
             {showCmdSuggestPanel && (
-              <div
-                className="cmd-suggest"
-                role="listbox"
-                aria-label={
-                  visibleRecentMatches.length > 0 && visibleSnippets.length > 0
-                    ? `Comandos recientes y sugerencias${cmdSuggestCmd ? ` (${cmdSuggestCmd})` : ''}`
-                    : visibleRecentMatches.length > 0
-                      ? 'Comandos recientes'
-                      : cmdSuggestCmd
-                        ? `Sugerencias para ${cmdSuggestCmd}`
-                        : 'Sugerencias'
-                }
-              >
-                {visibleRecentMatches.length > 0 && (
-                  <div
-                    className={[
-                      'cmd-suggest-recent-block',
-                      visibleSnippets.length > 0 ? 'cmd-suggest-recent-block--sep' : '',
-                    ].filter(Boolean).join(' ')}
-                  >
-                    <div className="cmd-suggest-section-header">
-                      <div className="cmd-suggest-section-title cmd-suggest-section-title--in-header">recientes</div>
-                      <button
-                        type="button"
-                        className="cmd-suggest-clear-history-btn"
-                        title="Borrar la lista de comandos recientes de esta terminal (no afecta al historial del shell)"
-                        onMouseDown={e => {
-                          e.preventDefault()
-                          handleClearCmdHistory()
-                        }}
-                      >
-                        Vaciar historial
-                      </button>
-                    </div>
-                    {visibleRecentMatches.map(cmd => (
-                      <button
-                        key={`recent:${cmd}`}
-                        type="button"
-                        className="cmd-suggest-item"
-                        onMouseDown={e => { e.preventDefault(); handleRecentCmdPick(cmd) }}
-                        role="option"
-                        title="Escribir en la terminal (sin ejecutar)"
-                      >
-                        <span className="cmd-suggest-script-icon" aria-hidden="true">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="4 17 10 11 4 5"/>
-                            <line x1="12" y1="19" x2="20" y2="19"/>
-                          </svg>
-                        </span>
-                        <CmdSuggestHighlightedLabel display={cmd} draft={cmdSuggestDraft} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {visibleSnippets.length > 0 && (
-                  <div className="cmd-suggest-static-block">
-                    <div className="cmd-suggest-section-title">{cmdSuggestCmd}</div>
-                    {visibleSnippets.map(s => (
-                      <button
-                        key={s.cmd}
-                        type="button"
-                        className="cmd-suggest-item"
-                        onMouseDown={e => { e.preventDefault(); handleCmdSnippetPick(s.cmd) }}
-                        role="option"
-                        title="Escribir en la terminal (sin ejecutar)"
-                      >
-                        <span className="cmd-suggest-script-icon" aria-hidden="true">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="4 17 10 11 4 5"/>
-                            <line x1="12" y1="19" x2="20" y2="19"/>
-                          </svg>
-                        </span>
-                        <CmdSuggestHighlightedLabel display={s.label} draft={cmdSuggestDraft} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <CmdSuggest
+                visibleRecentMatches={visibleRecentMatches}
+                visibleSnippets={visibleSnippets}
+                cmdSuggestCmd={cmdSuggestCmd}
+                cmdSuggestDraft={cmdSuggestDraft}
+                onPickRecent={handleRecentCmdPick}
+                onPickSnippet={handleCmdSnippetPick}
+                onClearHistory={handleClearCmdHistory}
+              />
             )}
           </div>
         )}
       </div>
 
-      {/* IA: overlay inferior (~85% alto expandido), misma cabecera colapsada/expandida vive en AiPanel */}
       <div
         ref={aiDockRef}
         className={[
@@ -1416,6 +1220,16 @@ export const TerminalPane: React.FC<Props> = ({
           paneToolbar?.onClosePane?.()
         }}
         onCancel={() => setConfirmClosePaneOpen(false)}
+      />
+
+      <GitPanelModal
+        open={gitPanelOpen}
+        sessionId={sessionId}
+        config={config}
+        onClose={() => {
+          setGitPanelOpen(false)
+          queueMicrotask(() => { termRef.current?.focus() })
+        }}
       />
     </div>
   )

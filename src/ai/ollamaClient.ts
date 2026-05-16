@@ -1,5 +1,6 @@
 import type { ProjectAiContextForAi } from '@shared/projectAiContext'
 import type { AgentShellPolicy } from '@shared/configSchema'
+import { GIT_MAX_COMMIT_MESSAGE_CHARS } from '@shared/gitSessionTypes'
 import {
   READ_BLOCK_END,
   READ_BLOCK_START,
@@ -571,4 +572,34 @@ export function buildChatSystemPrompt(
     agentShellPolicy,
     interactionsLog,
   )
+}
+
+/**
+ * Una sola línea de asunto para `git commit -m`, a partir de estado/diff (truncado en el caller).
+ */
+export async function suggestGitCommitMessage(
+  diffContext: string,
+  options: OllamaOptions,
+): Promise<string> {
+  const trimmed = diffContext.trim().slice(0, 120_000)
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content:
+        'You write git commit subject lines only. Reply with exactly ONE line: a concise subject ' +
+        '(prefer Conventional Commits: type(scope): description). No quotes, no markdown fences, no backticks, no multiple lines.',
+    },
+    {
+      role: 'user',
+      content:
+        'Propose only the commit subject line for the following repository state and diffs:\n\n' +
+        trimmed,
+    },
+  ]
+  const raw = await chatOllama(messages, { ...options, think: false })
+  const cleaned = raw
+    .replace(/^[`"'«»]+|[`"'«»]+$/g, '')
+    .trim()
+  const line = cleaned.split(/\r?\n/).map(l => l.trim()).find(l => l.length > 0) ?? ''
+  return line.slice(0, GIT_MAX_COMMIT_MESSAGE_CHARS)
 }

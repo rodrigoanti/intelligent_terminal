@@ -1,0 +1,34 @@
+.textarea {
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 4.5rem;
+}
+
+.textarea:focus {
+  border-color: var(--accent);
+}
+
+.textarea--md {
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.textarea--sm {
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.textarea--default::placeholder {
+  color: var(--text-muted);
+  opacity: 0.65;
+}

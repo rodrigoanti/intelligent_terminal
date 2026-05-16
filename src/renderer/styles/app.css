@@ -159,24 +159,32 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    'pane-tl pane-tr'
+    'pane-bottom pane-bottom';
   align-items: stretch;
 }
 
 .tab-terminal-group--panes-3 .tab-terminal-pane-cell--slot-3-0 {
-  grid-column: 1;
-  grid-row: 1;
+  grid-area: pane-tl;
   border-right: 1px solid var(--border);
 }
 
 .tab-terminal-group--panes-3 .tab-terminal-pane-cell--slot-3-1 {
-  grid-column: 2;
-  grid-row: 1;
+  grid-area: pane-tr;
 }
 
 .tab-terminal-group--panes-3 .tab-terminal-pane-cell--slot-3-2 {
+  grid-area: pane-bottom;
+  border-top: 1px solid var(--border);
+}
+
+/* Si quedan 3 celdas en rejilla 2×2 (p. ej. transición 4→3), el tercero ocupa todo el ancho inferior */
+.tab-terminal-group--panes-4 .tab-terminal-pane-cell:nth-child(3):last-child {
   grid-column: 1 / -1;
   grid-row: 2;
-  border-top: 1px solid var(--border);
+  border-right: none;
+  border-bottom: none;
 }
 
 .tab-terminal-group--active.tab-terminal-group--panes-4 {

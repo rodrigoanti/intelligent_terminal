@@ -1,0 +1,46 @@
+.input {
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.input--md {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.input--sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* Inline variant: borderless, transparent background, bottom border only */
+.input--inline {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: 0;
+  color: var(--text);
+}
+
+.input--inline:focus {
+  border-bottom-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.input--inline::placeholder {
+  color: var(--text-muted);
+  opacity: 0.55;
+}

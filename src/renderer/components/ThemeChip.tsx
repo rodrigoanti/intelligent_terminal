@@ -1,0 +1,44 @@
+import React from 'react'
+import type { AppTheme } from '@themes/presets'
+
+interface ThemeChipProps {
+  theme: AppTheme
+  isActive: boolean
+  isFocused: boolean
+  onSelect: () => void
+  onHover: () => void
+}
+
+export const ThemeChip: React.FC<ThemeChipProps> = ({
+  theme,
+  isActive,
+  isFocused,
+  onSelect,
+  onHover,
+}) => {
+  const bg = theme.vars['--bg'] ?? theme.xterm.background
+  const accent = theme.vars['--accent'] ?? theme.xterm.cursor
+
+  return (
+    <button
+      type="button"
+      className={[
+        'theme-picker-chip',
+        isActive ? 'theme-picker-chip--active' : '',
+        isFocused ? 'theme-picker-chip--focus' : '',
+      ].filter(Boolean).join(' ')}
+      role="option"
+      aria-selected={isActive}
+      title={theme.name}
+      onClick={onSelect}
+      onMouseEnter={onHover}
+      onFocus={onHover}
+    >
+      <span className="theme-picker-chip-palette" aria-hidden="true">
+        <span className="theme-picker-chip-swatch-bg" style={{ background: bg }} />
+        <span className="theme-picker-chip-swatch-accent" style={{ background: accent }} />
+      </span>
+      <span className="theme-picker-chip-name">{theme.name}</span>
+    </button>
+  )
+}

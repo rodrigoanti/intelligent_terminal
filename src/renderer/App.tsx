@@ -3,11 +3,11 @@ import type { DragEvent } from 'react'
 import { applyTheme, getTheme, normalizeThemeId } from '@themes/presets'
 import type { AppConfig } from '@shared/configSchema'
 import { CONFIG_DEFAULTS } from '@shared/configSchema'
-import { TabBar } from './components/TabBar'
+import { TabBar, type TabBarHandle } from './components/TabBar'
 import { TerminalPane } from './terminal/TerminalPane'
 import { SettingsModal } from './components/SettingsModal'
 import { ThemePickerModal } from './components/ThemePickerModal'
-import { TitlebarMusicControls } from './components/TitlebarMusicControls'
+import { Titlebar } from './components/Titlebar'
 import './styles/app.css'
 
 export interface TabSession {
@@ -22,6 +22,25 @@ export interface TabSession {
 
 /** Máximo de splits por pestaña (layout 2×2). */
 export const MAX_PANES_PER_TAB = 4
+
+/**
+ * Tras cerrar un panel en una rejilla 2×2 de 4, reordenar supervivientes a
+ * [sup-izq, sup-der, inferior-a-ancho-completo] para el layout de 3 paneles.
+ * Orden en paneIds con 4: 0=sup-izq, 1=sup-der, 2=inf-izq, 3=inf-der.
+ */
+function reorderPaneIdsAfterCloseInFourGrid(paneIds: string[], closedPaneId: string): string[] {
+  if (paneIds.length !== 4) {
+    return paneIds.filter(id => id !== closedPaneId)
+  }
+  const ci = paneIds.indexOf(closedPaneId)
+  if (ci < 0) return paneIds.filter(id => id !== closedPaneId)
+  const [tl, tr, bl, br] = paneIds
+  if (ci === 3) return [tl, tr, bl]
+  if (ci === 2) return [tl, tr, br]
+  if (ci === 1) return [tl, br, bl]
+  if (ci === 0) return [tr, bl, br]
+  return paneIds.filter(id => id !== closedPaneId)
+}
 
 function capTabsPaneCount(tabs: TabSession[], maxPanes: number): { tabs: TabSession[]; orphanPaneIds: string[] } {
   const orphanPaneIds: string[] = []
@@ -260,6 +279,15 @@ export const App: React.FC = () => {
     setActiveTabId(tab.id)
   }, [])
 
+  /** ⌘W: mismo modal que la cruz del panel (TerminalPane registra `openConfirm` por paneId). */
+  const paneShortcutCloseInterceptors = useRef(new Map<string, () => void>())
+  const registerPaneShortcutCloseIntercept = useCallback((paneId: string, openConfirm: () => void) => {
+    paneShortcutCloseInterceptors.current.set(paneId, openConfirm)
+    return () => {
+      paneShortcutCloseInterceptors.current.delete(paneId)
+    }
+  }, [])
+
   const handleCloseTab = useCallback((tabId: string) => {
     const victim = tabsRef.current.find(t => t.id === tabId)
     if (victim) {
@@ -327,10 +355,13 @@ export const App: React.FC = () => {
       if (tab.id !== tabId) return tab
       const idx = tab.paneIds.indexOf(paneId)
       if (idx < 0) return tab
-      const nextPanes = tab.paneIds.filter(p => p !== paneId)
+      const nextPanes = reorderPaneIdsAfterCloseInFourGrid(tab.paneIds, paneId)
       let nextActive = tab.activePaneId
       if (nextActive === paneId) {
-        nextActive = nextPanes[Math.max(0, idx - 1)] ?? nextPanes[0]
+        const prefer =
+          tab.paneIds[Math.max(0, idx - 1)] ??
+          tab.paneIds[Math.min(idx + 1, tab.paneIds.length - 1)]
+        nextActive = prefer && nextPanes.includes(prefer) ? prefer : nextPanes[0]!
       }
       return { ...tab, paneIds: nextPanes, activePaneId: nextActive }
     }))
@@ -368,14 +399,13 @@ export const App: React.FC = () => {
     setTabs(prev => prev.map(t => (t.id === tabId ? { ...t, activePaneId: paneId } : t)))
   }, [])
 
-  const handleCloseTabRef = useRef(handleCloseTab)
-  handleCloseTabRef.current = handleCloseTab
+  const tabBarRef = useRef<TabBarHandle>(null)
   const handleClosePaneRef = useRef(handleClosePane)
   handleClosePaneRef.current = handleClosePane
   const handleSplitRightRef = useRef(handleSplitRight)
   handleSplitRightRef.current = handleSplitRight
 
-  // ⌘W: varios paneles en la pestaña → cerrar panel activo; varias pestañas → cerrar pestaña; una pestaña un panel → ventana
+  // ⌘W: varios paneles en la pestaña → mismo modal que la cruz; varias pestañas → mismo modal que la cruz de pestaña; una pestaña un panel → ventana
   useEffect(() => {
     return window.api.onShortcutCloseTab(() => {
       const tabList = tabsRef.current
@@ -383,14 +413,19 @@ export const App: React.FC = () => {
       const tab = tabList.find(t => t.id === aid)
       if (!tab) return
       if (tab.paneIds.length > 1) {
+        const openConfirm = paneShortcutCloseInterceptors.current.get(tab.activePaneId)
+        if (openConfirm) {
+          openConfirm()
+          return
+        }
         handleClosePaneRef.current(tab.id, tab.activePaneId)
         return
       }
       if (tabList.length > 1) {
-        handleCloseTabRef.current(aid)
-      } else {
-        window.close()
+        tabBarRef.current?.requestCloseTab(aid)
+        return
       }
+      window.close()
     })
   }, [])
 
@@ -635,6 +670,11 @@ export const App: React.FC = () => {
                 }
               : undefined,
         }}
+        registerShortcutCloseInterceptor={
+          tab.paneIds.length > 1
+            ? openConfirm => registerPaneShortcutCloseIntercept(paneId, openConfirm)
+            : undefined
+        }
         onRequestSplitPane={
           tab.id === activeTabId && tab.activePaneId === paneId && tab.paneIds.length < MAX_PANES_PER_TAB
             ? () => { void handleSplitRight(tab.id, paneId) }
@@ -656,78 +696,21 @@ export const App: React.FC = () => {
   return (
     <div className="app-root">
       {/* ── Title bar (macOS traffic lights live here) ── */}
-      <div className="titlebar">
-        <div className="titlebar-drag" />
-        <div className="titlebar-actions">
-          <TitlebarMusicControls
-            config={config}
-            onOpenSettings={() => setSettingsOpen(true)}
-          />
-          {/* Font size buttons */}
-          <button
-            type="button"
-            tabIndex={-1}
-            className="icon-btn font-size-btn"
-            onClick={() => changeFontSize(-1)}
-            disabled={(config.fontSize ?? 13) <= MIN_FONT}
-            title="Reducir tamaño de letra"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              <line x1="8" y1="11" x2="14" y2="11"/>
-            </svg>
-          </button>
-          <button
-            type="button"
-            tabIndex={-1}
-            className="icon-btn font-size-btn"
-            onClick={() => changeFontSize(1)}
-            disabled={(config.fontSize ?? 13) >= MAX_FONT}
-            title="Aumentar tamaño de letra"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              <line x1="11" y1="8" x2="11" y2="14"/>
-              <line x1="8" y1="11" x2="14" y2="11"/>
-            </svg>
-          </button>
-
-          {/* Selector de tema (modal con vista previa) */}
-          <button
-            type="button"
-            tabIndex={-1}
-            className="theme-picker-trigger"
-            onClick={() => setThemePickerOpen(true)}
-            title="Elegir tema"
-            aria-haspopup="dialog"
-            aria-expanded={themePickerOpen}
-          >
-            <span className="theme-picker-trigger-palette" aria-hidden>
-              <span
-                className="theme-picker-trigger-swatch-bg"
-                style={{ background: getTheme(config.themeId).vars['--bg'] ?? getTheme(config.themeId).xterm.background }}
-              />
-              <span
-                className="theme-picker-trigger-swatch-accent"
-                style={{ background: getTheme(config.themeId).vars['--accent'] ?? getTheme(config.themeId).xterm.cursor }}
-              />
-            </span>
-            <span className="theme-picker-trigger-label">{getTheme(config.themeId).name}</span>
-          </button>
-
-          <button type="button" tabIndex={-1} className="icon-btn" onClick={() => setSettingsOpen(true)} title="Ajustes">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-          </button>
-        </div>
-      </div>
+      <Titlebar
+        config={config}
+        fontSize={config.fontSize ?? 13}
+        fontSizeMin={MIN_FONT}
+        fontSizeMax={MAX_FONT}
+        themePickerOpen={themePickerOpen}
+        onFontIncrease={() => changeFontSize(1)}
+        onFontDecrease={() => changeFontSize(-1)}
+        onOpenThemePicker={() => setThemePickerOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
       {/* ── Tab bar ── */}
       <TabBar
+        ref={tabBarRef}
         tabs={tabs}
         activeTabId={activeTabId}
         onSelect={setActiveTabId}
