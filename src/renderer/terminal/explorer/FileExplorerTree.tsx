@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FileExplorerEntry } from '@shared/fileExplorerTypes'
+import type { FileExplorerChangeKind, FileExplorerEntry } from '@shared/fileExplorerTypes'
 import { FileExplorerTreeNode } from './FileExplorerTreeNode'
 
 interface FileExplorerTreeProps {
@@ -15,6 +15,40 @@ function sortEntries(entries: FileExplorerEntry[]): FileExplorerEntry[] {
   })
 }
 
+const GIT_KIND_PRIORITY: Record<FileExplorerChangeKind, number> = {
+  clean: 0,
+  staged: 1,
+  untracked: 2,
+  deleted: 3,
+  modified: 4,
+}
+
+function mergeGitChangeKind(
+  current: FileExplorerChangeKind,
+  next: FileExplorerChangeKind,
+): FileExplorerChangeKind {
+  return GIT_KIND_PRIORITY[next] > GIT_KIND_PRIORITY[current] ? next : current
+}
+
+/** Estado git dominante por carpeta (según archivos descendientes con cambios). */
+function buildDirGitStatuses(
+  fileStatuses: Record<string, FileExplorerChangeKind>,
+): Record<string, FileExplorerChangeKind> {
+  const dirStatuses: Record<string, FileExplorerChangeKind> = {}
+
+  for (const [filePath, kind] of Object.entries(fileStatuses)) {
+    if (kind === 'clean') continue
+    const parts = filePath.split('/')
+    let acc = ''
+    for (let i = 0; i < parts.length; i++) {
+      acc = acc ? `${acc}/${parts[i]}` : parts[i]!
+      dirStatuses[acc] = mergeGitChangeKind(dirStatuses[acc] ?? 'clean', kind)
+    }
+  }
+
+  return dirStatuses
+}
+
 export const FileExplorerTree: React.FC<FileExplorerTreeProps> = ({
   sessionId,
   selectedPath,
@@ -25,6 +59,14 @@ export const FileExplorerTree: React.FC<FileExplorerTreeProps> = ({
     () => new Map(),
   )
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set())
+  const [gitStatuses, setGitStatuses] = useState<Record<string, FileExplorerChangeKind>>({})
+
+  const refreshGitMap = useCallback(async (): Promise<void> => {
+    const result = await window.api.fileExplorerGitMap(sessionId)
+    if (result.ok) {
+      setGitStatuses(result.statuses)
+    }
+  }, [sessionId])
 
   const loadDir = useCallback(
     async (relPath: string): Promise<void> => {
@@ -50,8 +92,17 @@ export const FileExplorerTree: React.FC<FileExplorerTreeProps> = ({
   useEffect(() => {
     setExpanded(new Set(['']))
     setChildrenByDir(new Map())
+    setGitStatuses({})
     void loadDir('')
-  }, [sessionId, loadDir])
+    void refreshGitMap()
+  }, [sessionId, loadDir, refreshGitMap])
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void refreshGitMap()
+    }, 2500)
+    return () => window.clearInterval(id)
+  }, [refreshGitMap])
 
   const toggleDir = useCallback(
     (relPath: string): void => {
@@ -99,6 +150,11 @@ export const FileExplorerTree: React.FC<FileExplorerTreeProps> = ({
     return rows
   }, [childrenByDir, expanded, loadingDirs])
 
+  const dirGitStatuses = useMemo(
+    () => buildDirGitStatuses(gitStatuses),
+    [gitStatuses],
+  )
+
   return (
     <div className="file-explorer-tree" role="tree">
       {visibleRows.length === 0 && !loadingDirs.has('') && (
@@ -112,6 +168,11 @@ export const FileExplorerTree: React.FC<FileExplorerTreeProps> = ({
           expanded={row.expanded}
           loading={row.loading}
           selected={selectedPath === row.entry.relPath}
+          changeKind={
+            row.entry.isDirectory
+              ? (dirGitStatuses[row.entry.relPath] ?? 'clean')
+              : (gitStatuses[row.entry.relPath] ?? 'clean')
+          }
           onToggleDir={toggleDir}
           onSelectFile={onSelectFile}
         />

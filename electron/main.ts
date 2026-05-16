@@ -49,7 +49,7 @@ import {
   gitStageAll,
 } from './gitSessionOps'
 import { githubActionsListForSession } from './githubActionsOps'
-import { listDirChildren, loadFileForExplorer } from './fileExplorerOps'
+import { getGitStatusMapForExplorer, listDirChildren, loadFileForExplorer } from './fileExplorerOps'
 import { readCdRecentFolders } from './cdRecentMd'
 import {
   clearSessionCdState,
@@ -332,6 +332,10 @@ function registerIpc(): void {
       return { ok: false, relPath: '', error: 'ruta vacía' }
     }
     return loadFileForExplorer(projectRootForSession(sessionId), relPath)
+  })
+
+  ipcMain.handle(IPC.FILE_EXPLORER_GIT_MAP, (_e, sessionId: string) => {
+    return getGitStatusMapForExplorer(projectRootForSession(sessionId))
   })
 
   ipcMain.handle(IPC.SESSION_LOAD, (): PersistedSession | null => loadSession())

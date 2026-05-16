@@ -8,6 +8,7 @@ import type { GitCommandResult, GitDiffForAiPayload, GitRepoStatus } from '../sr
 import type { GitHubActionsSnapshot } from '../src/shared/githubActionsTypes'
 import type {
   FileExplorerFilePayload,
+  FileExplorerGitMapResult,
   FileExplorerListResult,
 } from '../src/shared/fileExplorerTypes'
 
@@ -190,6 +191,10 @@ const api = {
 
   fileExplorerLoadFile(sessionId: string, relPath: string): Promise<FileExplorerFilePayload> {
     return ipcRenderer.invoke(IPC.FILE_EXPLORER_LOAD_FILE, sessionId, relPath)
+  },
+
+  fileExplorerGitMap(sessionId: string): Promise<FileExplorerGitMapResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_GIT_MAP, sessionId)
   },
 
   // ─── Persistencia ────────────────────────────────────────────────────────

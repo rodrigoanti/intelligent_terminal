@@ -26,3 +26,11 @@ export interface FileExplorerFilePayload {
   changeKind?: FileExplorerChangeKind
   error?: string
 }
+
+/** Mapa relPath (cwd de sesión) → estado git del archivo */
+export interface FileExplorerGitMapResult {
+  ok: boolean
+  /** Vacío si no hay repo git o no hay cambios */
+  statuses: Record<string, FileExplorerChangeKind>
+  error?: string
+}

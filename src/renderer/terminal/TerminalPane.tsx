@@ -1214,13 +1214,7 @@ export const TerminalPane: React.FC<Props> = ({
         )}
         </div>
         {explorerOpen && tabActive && (
-          <FileExplorerSidebar
-            sessionId={sessionId}
-            onClose={() => {
-              setExplorerOpen(false)
-              queueMicrotask(() => { termRef.current?.focus() })
-            }}
-          />
+          <FileExplorerSidebar sessionId={sessionId} />
         )}
       </div>
 

@@ -65,6 +65,8 @@ export const IPC = {
   FILE_EXPLORER_LIST_DIR: 'fileExplorer:listDir',
   /** Renderer → main (invoke): leer archivo + diff git para el explorador */
   FILE_EXPLORER_LOAD_FILE: 'fileExplorer:loadFile',
+  /** Renderer → main (invoke): mapa de estados git para colorear el árbol */
+  FILE_EXPLORER_GIT_MAP: 'fileExplorer:gitMap',
 
   // ─── Persistencia de sesión ────────────────────────────────────────────────
   /** Renderer → main: guardar layout de pestañas + cwds */

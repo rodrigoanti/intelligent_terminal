@@ -2,7 +2,7 @@ import React from 'react'
 
 interface FilePlainViewProps {
   content: string
-  variant?: 'default' | 'untracked'
+  variant?: 'default' | 'untracked' | 'modified'
 }
 
 export const FilePlainView: React.FC<FilePlainViewProps> = ({
@@ -13,6 +13,7 @@ export const FilePlainView: React.FC<FilePlainViewProps> = ({
     className={[
       'file-plain-view',
       variant === 'untracked' ? 'file-plain-view--untracked' : '',
+      variant === 'modified' ? 'file-plain-view--modified' : '',
     ].filter(Boolean).join(' ')}
   >
     {content}

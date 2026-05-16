@@ -1,10 +1,11 @@
 import { spawn } from 'child_process'
-import { normalize, resolve } from 'path'
+import { normalize, relative, resolve } from 'path'
 import { readdirSync, statSync } from 'fs'
 import type {
   FileExplorerChangeKind,
   FileExplorerEntry,
   FileExplorerFilePayload,
+  FileExplorerGitMapResult,
   FileExplorerListResult,
 } from '../src/shared/fileExplorerTypes'
 import { readProjectFile, resolveSafeProjectPath } from './agentFileOps'
@@ -76,6 +77,77 @@ async function getRepoRoot(sessionCwd: string): Promise<string | null> {
   const r = await runGit(sessionCwd, ['rev-parse', '--show-toplevel'])
   if (r.exitCode !== 0) return null
   return r.stdout.trim().split('\n')[0]?.trim() || null
+}
+
+function sessionRelFromRepoPath(
+  repoRoot: string,
+  sessionCwd: string,
+  gitPath: string,
+): string | null {
+  const abs = resolve(repoRoot, gitPath.replace(/\\/g, '/'))
+  const rel = relative(sessionCwd, abs).replace(/\\/g, '/')
+  if (!rel || rel.startsWith('..')) return null
+  return rel
+}
+
+function porcelainToChangeKind(xy: string): FileExplorerChangeKind {
+  if (xy === '??') return 'untracked'
+  if (xy[0] === 'D' || xy[1] === 'D') return 'deleted'
+  const staged = xy[0] !== ' ' && xy[0] !== '?'
+  const unstaged = xy[1] !== ' '
+  if (staged && unstaged) return 'modified'
+  if (staged) return 'staged'
+  if (unstaged) return 'modified'
+  return 'clean'
+}
+
+function parsePorcelainPath(pathPart: string): string {
+  const arrow = pathPart.indexOf(' -> ')
+  return (arrow >= 0 ? pathPart.slice(arrow + 4) : pathPart).trim()
+}
+
+export async function getGitStatusMapForExplorer(
+  projectRootRaw: string,
+): Promise<FileExplorerGitMapResult> {
+  const sessionCwd = resolveWorkingDir(projectRootRaw)
+  if (!sessionCwd) {
+    return { ok: false, statuses: {}, error: 'cwd inválido' }
+  }
+
+  const repoRoot = await getRepoRoot(sessionCwd)
+  if (!repoRoot) {
+    return { ok: true, statuses: {} }
+  }
+
+  const status = await runGit(repoRoot, ['status', '--porcelain=v1'])
+  if (status.exitCode !== 0) {
+    return { ok: false, statuses: {}, error: status.stderr.trim() || 'git status falló' }
+  }
+
+  const statuses: Record<string, FileExplorerChangeKind> = {}
+  for (const line of status.stdout.split('\n')) {
+    if (!line || line.length < 4) continue
+    const xy = line.slice(0, 2)
+    const gitPath = parsePorcelainPath(line.slice(3))
+    if (!gitPath) continue
+    const sessionRel = sessionRelFromRepoPath(repoRoot, sessionCwd, gitPath)
+    if (!sessionRel) continue
+    statuses[sessionRel] = porcelainToChangeKind(xy)
+  }
+
+  return { ok: true, statuses }
+}
+
+async function gitPathInRepo(
+  repoRoot: string,
+  sessionCwd: string,
+  relPath: string,
+): Promise<string | null> {
+  const abs = resolveSafeProjectPath(sessionCwd, relPath)
+  if (!abs) return null
+  const gitPath = relative(repoRoot, abs).replace(/\\/g, '/')
+  if (gitPath.startsWith('..')) return null
+  return gitPath
 }
 
 function normalizeRelPath(relPath: string): string {
@@ -179,19 +251,22 @@ export async function diffFileForExplorer(
   projectRootRaw: string,
   relPath: string,
 ): Promise<Pick<FileExplorerFilePayload, 'diff' | 'changeKind'>> {
-  const projectRoot = resolveWorkingDir(projectRootRaw)
-  if (!projectRoot) {
+  const sessionCwd = resolveWorkingDir(projectRootRaw)
+  if (!sessionCwd) {
     return { changeKind: 'clean' }
   }
 
-  const repoRoot = await getRepoRoot(projectRoot)
-  const gitPath = relPath.replace(/\\/g, '/')
-
+  const repoRoot = await getRepoRoot(sessionCwd)
   if (!repoRoot) {
-    return { changeKind: 'untracked', diff: '' }
+    return { changeKind: 'clean', diff: '' }
   }
 
-  const abs = resolveSafeProjectPath(projectRoot, relPath)
+  const gitPath = await gitPathInRepo(repoRoot, sessionCwd, relPath)
+  if (!gitPath) {
+    return { changeKind: 'clean', diff: '' }
+  }
+
+  const abs = resolveSafeProjectPath(sessionCwd, relPath)
   if (!abs) {
     return { changeKind: 'clean', diff: '' }
   }
@@ -203,13 +278,8 @@ export async function diffFileForExplorer(
     exists = false
   }
 
-  const status = await runGit(repoRoot, ['status', '--porcelain', '--', gitPath])
-  const line = status.stdout
-    .split('\n')
-    .find(l => {
-      const rest = l.slice(3).trim()
-      return rest === gitPath || rest.endsWith(`/${gitPath}`)
-    })
+  const status = await runGit(repoRoot, ['status', '--porcelain=v1', '--', gitPath])
+  const line = status.stdout.split('\n').find(l => l.length >= 4)
 
   if (!exists && line) {
     return {
@@ -219,23 +289,27 @@ export async function diffFileForExplorer(
   }
 
   if (!line) {
-    return exists ? { changeKind: 'clean', diff: '' } : { changeKind: 'clean', diff: '' }
+    return { changeKind: 'clean', diff: '' }
   }
 
   const xy = line.slice(0, 2)
-  const staged = xy[0] !== ' ' && xy[0] !== '?'
-  const unstaged = xy[1] !== ' '
-  const untracked = xy === '??'
+  const changeKind = porcelainToChangeKind(xy)
 
-  if (untracked) {
-    return { changeKind: 'untracked', diff: '' }
+  if (changeKind === 'untracked') {
+    return {
+      changeKind: 'untracked',
+      diff: await buildUntrackedDiff(repoRoot, gitPath),
+    }
   }
-
-  const changeKind: FileExplorerChangeKind =
-  staged && !unstaged ? 'staged' : unstaged && staged ? 'modified' : staged ? 'staged' : 'modified'
 
   const diff = await buildDiff(repoRoot, gitPath)
   return { changeKind, diff }
+}
+
+async function buildUntrackedDiff(repoRoot: string, gitPath: string): Promise<string> {
+  const r = await runGit(repoRoot, ['diff', '--no-index', '--', '/dev/null', gitPath])
+  if (r.stdout.trim()) return r.stdout.trim()
+  return ''
 }
 
 async function buildDiff(repoRoot: string, gitPath: string): Promise<string> {

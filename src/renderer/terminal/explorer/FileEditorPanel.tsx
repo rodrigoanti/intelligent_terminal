@@ -7,6 +7,25 @@ import { FilePlainView } from './FilePlainView'
 
 type EditorView = 'changes' | 'file'
 
+const CHANGE_BADGE: Record<
+  Exclude<FileExplorerChangeKind, 'clean'>,
+  { label: string; className: string }
+> = {
+  modified: { label: 'modificado', className: 'file-editor-panel__badge--modified' },
+  staged: { label: 'en stage', className: 'file-editor-panel__badge--staged' },
+  untracked: { label: 'nuevo', className: 'file-editor-panel__badge--untracked' },
+  deleted: { label: 'eliminado', className: 'file-editor-panel__badge--deleted' },
+}
+
+function prefersChangesView(
+  kind: FileExplorerChangeKind,
+  hasDiff: boolean,
+): boolean {
+  if (kind === 'deleted') return true
+  if (hasDiff) return true
+  return kind === 'modified' || kind === 'staged' || kind === 'untracked'
+}
+
 interface FileEditorPanelProps {
   sessionId: string
   selectedPath: string | null
@@ -49,7 +68,7 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
       const kind = payload.changeKind ?? 'clean'
       setChangeKind(kind)
       const hasDiff = Boolean(payload.diff?.trim())
-      setView(hasDiff || kind === 'deleted' ? 'changes' : 'file')
+      setView(prefersChangesView(kind, hasDiff) ? 'changes' : 'file')
     }).finally(() => {
       if (!cancelled) setLoading(false)
     })
@@ -69,6 +88,9 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
 
   const hasDiff = diff.trim().length > 0
   const showChanges = view === 'changes' && (hasDiff || changeKind === 'deleted')
+  const badge =
+    changeKind !== 'clean' ? CHANGE_BADGE[changeKind] : null
+  const canShowDiff = hasDiff || changeKind === 'deleted'
 
   return (
     <div className="file-editor-panel">
@@ -76,10 +98,12 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
         <code className="file-editor-panel__path" title={selectedPath}>
           {selectedPath}
         </code>
-        {changeKind === 'untracked' && (
-          <span className="file-editor-panel__badge">nuevo</span>
+        {badge && (
+          <span className={`file-editor-panel__badge ${badge.className}`}>
+            {badge.label}
+          </span>
         )}
-        {hasDiff && (
+        {canShowDiff && (
           <div className="file-editor-panel__tabs">
             <Button
               variant={showChanges ? 'primary' : 'ghost'}
@@ -118,7 +142,13 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
         {!loading && !error && !showChanges && (
           <FilePlainView
             content={content}
-            variant={changeKind === 'untracked' ? 'untracked' : 'default'}
+            variant={
+              changeKind === 'untracked'
+                ? 'untracked'
+                : changeKind === 'modified' || changeKind === 'staged'
+                  ? 'modified'
+                  : 'default'
+            }
           />
         )}
       </div>

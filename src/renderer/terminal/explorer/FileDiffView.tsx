@@ -4,7 +4,7 @@ interface FileDiffViewProps {
   diff: string
 }
 
-type DiffLineKind = 'add' | 'del' | 'hunk' | 'meta' | 'ctx'
+type DiffLineKind = 'add' | 'del' | 'hunk' | 'meta' | 'ctx' | 'section'
 
 interface ParsedLine {
   kind: DiffLineKind
@@ -14,7 +14,9 @@ interface ParsedLine {
 function parseDiffLines(diff: string): ParsedLine[] {
   const out: ParsedLine[] = []
   for (const raw of diff.split('\n')) {
-    if (raw.startsWith('+++ ') || raw.startsWith('--- ')) {
+    if (raw.startsWith('--- staged') || raw.startsWith('--- unstaged')) {
+      out.push({ kind: 'section', text: raw })
+    } else if (raw.startsWith('+++ ') || raw.startsWith('--- ')) {
       out.push({ kind: 'meta', text: raw })
     } else if (raw.startsWith('@@')) {
       out.push({ kind: 'hunk', text: raw })

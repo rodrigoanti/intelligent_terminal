@@ -10,44 +10,17 @@
   background: color-mix(in srgb, var(--surface) 12%, var(--bg));
 }
 
-.terminal-file-explorer__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  flex-shrink: 0;
-}
-
-.terminal-file-explorer__title {
-  font-size: 11px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.terminal-file-explorer__close {
-  font-size: 14px;
-  line-height: 1;
-  width: 22px;
-  height: 22px;
-}
-
 .terminal-file-explorer__tree-wrap {
   flex: 0 0 auto;
-  max-height: 42%;
-  min-height: 120px;
+  max-height: 26%;
+  min-height: 64px;
   overflow: auto;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  background: color-mix(in srgb, var(--bg) 40%, transparent);
 }
 
 .file-explorer-tree {
-  padding: 4px 0 6px;
+  padding: 2px 0 4px;
 }
 
 .file-explorer-tree__empty {
@@ -63,13 +36,13 @@
   gap: 4px;
   width: 100%;
   box-sizing: border-box;
-  padding: 2px 8px 2px 0;
+  padding: 1px 6px 1px 0;
   border: none;
   background: transparent;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 10px;
+  line-height: 1.25;
   text-align: left;
   cursor: pointer;
 }
@@ -107,18 +80,88 @@
   color: color-mix(in srgb, var(--accent) 45%, var(--text-muted));
 }
 
+.file-explorer-tree-node--git-modified.file-explorer-tree-node--dir .file-explorer-tree-node__icon {
+  color: #fbbf24;
+}
+
+.file-explorer-tree-node--git-staged.file-explorer-tree-node--dir .file-explorer-tree-node__icon {
+  color: #38bdf8;
+}
+
+.file-explorer-tree-node--git-untracked.file-explorer-tree-node--dir .file-explorer-tree-node__icon {
+  color: #4ade80;
+}
+
+.file-explorer-tree-node--git-deleted.file-explorer-tree-node--dir .file-explorer-tree-node__icon {
+  color: #fb7185;
+}
+
+.file-explorer-tree-node--git-deleted.file-explorer-tree-node--dir .file-explorer-tree-node__name {
+  text-decoration: none;
+}
+
 .file-explorer-tree-node__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  flex: 1;
+}
+
+.file-explorer-tree-node__git {
+  flex-shrink: 0;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 3px;
+  opacity: 0.95;
+}
+
+.file-explorer-tree-node--git-modified .file-explorer-tree-node__name,
+.file-explorer-tree-node--git-modified .file-explorer-tree-node__git {
+  color: #fbbf24;
+}
+
+.file-explorer-tree-node--git-modified .file-explorer-tree-node__git {
+  background: color-mix(in srgb, #fbbf24 22%, transparent);
+}
+
+.file-explorer-tree-node--git-staged .file-explorer-tree-node__name,
+.file-explorer-tree-node--git-staged .file-explorer-tree-node__git {
+  color: #38bdf8;
+}
+
+.file-explorer-tree-node--git-staged .file-explorer-tree-node__git {
+  background: color-mix(in srgb, #38bdf8 22%, transparent);
+}
+
+.file-explorer-tree-node--git-untracked .file-explorer-tree-node__name,
+.file-explorer-tree-node--git-untracked .file-explorer-tree-node__git {
+  color: #4ade80;
+}
+
+.file-explorer-tree-node--git-untracked .file-explorer-tree-node__git {
+  background: color-mix(in srgb, #4ade80 22%, transparent);
+}
+
+.file-explorer-tree-node--git-deleted .file-explorer-tree-node__name {
+  color: #fb7185;
+  text-decoration: line-through;
+  opacity: 0.85;
+}
+
+.file-explorer-tree-node--git-deleted .file-explorer-tree-node__git {
+  color: #fb7185;
+  background: color-mix(in srgb, #fb7185 22%, transparent);
 }
 
 .file-editor-panel {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: color-mix(in srgb, var(--surface) 8%, var(--bg));
 }
 
 .file-editor-panel--empty {
@@ -157,9 +200,31 @@
   letter-spacing: 0.05em;
   padding: 2px 6px;
   border-radius: 4px;
-  color: color-mix(in srgb, #34d399 80%, var(--text));
-  border: 1px solid color-mix(in srgb, #34d399 35%, var(--border));
-  background: color-mix(in srgb, #34d399 8%, transparent);
+  border: 1px solid transparent;
+}
+
+.file-editor-panel__badge--untracked {
+  color: color-mix(in srgb, #4ade80 88%, var(--text));
+  border-color: color-mix(in srgb, #4ade80 35%, var(--border));
+  background: color-mix(in srgb, #4ade80 10%, transparent);
+}
+
+.file-editor-panel__badge--modified {
+  color: color-mix(in srgb, #fbbf24 90%, var(--text));
+  border-color: color-mix(in srgb, #fbbf24 35%, var(--border));
+  background: color-mix(in srgb, #fbbf24 10%, transparent);
+}
+
+.file-editor-panel__badge--staged {
+  color: color-mix(in srgb, #38bdf8 90%, var(--text));
+  border-color: color-mix(in srgb, #38bdf8 35%, var(--border));
+  background: color-mix(in srgb, #38bdf8 10%, transparent);
+}
+
+.file-editor-panel__badge--deleted {
+  color: color-mix(in srgb, #fb7185 90%, var(--text));
+  border-color: color-mix(in srgb, #fb7185 35%, var(--border));
+  background: color-mix(in srgb, #fb7185 10%, transparent);
 }
 
 .file-editor-panel__tabs {
@@ -198,7 +263,11 @@
 }
 
 .file-plain-view--untracked {
-  background: color-mix(in srgb, #34d399 5%, transparent);
+  background: color-mix(in srgb, #4ade80 6%, transparent);
+}
+
+.file-plain-view--modified {
+  background: color-mix(in srgb, #fbbf24 4%, transparent);
 }
 
 .file-diff-view {
@@ -232,6 +301,14 @@
 
 .file-diff-view__line--meta {
   color: var(--text-muted);
+}
+
+.file-diff-view__line--section {
+  color: color-mix(in srgb, #a78bfa 85%, var(--text-muted));
+  background: color-mix(in srgb, #a78bfa 8%, transparent);
+  font-weight: 600;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 .file-diff-view__line--ctx {
