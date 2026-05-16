@@ -158,6 +158,7 @@
 
 /* Body: terminal + dock de sugerencias (flujo flex, no flotante) */
 .terminal-pane-body {
+  --terminal-above-dock-gap: 6px;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -169,7 +170,6 @@
 
 /* Área del xterm */
 .terminal-pane-main {
-  --terminal-above-dock-gap: 6px;
   flex: 1;
   min-height: 0;
   position: relative;
@@ -204,6 +204,8 @@
   margin-top: 0;
   border-top: 1px solid var(--border);
   background: var(--bg-secondary);
+  /* Misma reserva que .terminal-pane-main: el dock IA es position:absolute y tapaba npm/git/… */
+  padding-bottom: calc(var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap));
 }
 
 .terminal-suggest-stack > * {
