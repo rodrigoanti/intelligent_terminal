@@ -7,10 +7,12 @@ export interface PaneToolbarProps {
   showReorderHandle: boolean
   isGrabbed: boolean
   showClosePane: boolean
+  explorerOpen: boolean
   onDragHandleStart: (e: DragEvent) => void
   onDragHandleEnd: () => void
   onClosePane: () => void
   onOpenGitPanel: () => void
+  onToggleExplorer: () => void
   onOpenFolderInFinder: () => void
   onPointerDown: (e: React.MouseEvent) => void
 }
@@ -23,6 +25,8 @@ export const PaneToolbar: React.FC<PaneToolbarProps> = ({
   onDragHandleEnd,
   onClosePane,
   onOpenGitPanel,
+  onToggleExplorer,
+  explorerOpen,
   onOpenFolderInFinder,
   onPointerDown,
 }) => (
@@ -42,6 +46,15 @@ export const PaneToolbar: React.FC<PaneToolbarProps> = ({
         variant="git"
         onPointerDown={onPointerDown}
         onClick={onOpenGitPanel}
+      />
+      <PaneToolbarButton
+        icon="files"
+        title="Explorador de archivos (⌘E)"
+        aria-label="Explorador de archivos"
+        variant="files"
+        active={explorerOpen}
+        onPointerDown={onPointerDown}
+        onClick={onToggleExplorer}
       />
       <PaneToolbarButton
         icon="folder"
@@ -98,7 +111,8 @@ interface PaneToolbarButtonProps {
   icon: IconName
   title: string
   'aria-label'?: string
-  variant: 'folder' | 'close' | 'git'
+  variant: 'folder' | 'close' | 'git' | 'files'
+  active?: boolean
   onPointerDown: (e: React.MouseEvent) => void
   onClick: () => void
 }
@@ -108,13 +122,17 @@ const PaneToolbarButton: React.FC<PaneToolbarButtonProps> = ({
   title,
   'aria-label': ariaLabel,
   variant,
+  active = false,
   onPointerDown,
   onClick,
 }) => (
   <button
     type="button"
     tabIndex={-1}
-    className={`pane-toolbar-btn pane-toolbar-btn--${variant} terminal-chrome-btn`}
+    className={[
+      `pane-toolbar-btn pane-toolbar-btn--${variant} terminal-chrome-btn`,
+      active ? 'pane-toolbar-btn--active' : '',
+    ].filter(Boolean).join(' ')}
     title={title}
     aria-label={ariaLabel ?? title}
     onMouseDown={onPointerDown}

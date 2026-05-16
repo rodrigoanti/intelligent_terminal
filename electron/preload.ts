@@ -6,6 +6,10 @@ import type { PersistedSession, ChatEntry } from './persistence'
 import type { SpotifyPlaybackState } from './spotifyNative'
 import type { GitCommandResult, GitDiffForAiPayload, GitRepoStatus } from '../src/shared/gitSessionTypes'
 import type { GitHubActionsSnapshot } from '../src/shared/githubActionsTypes'
+import type {
+  FileExplorerFilePayload,
+  FileExplorerListResult,
+} from '../src/shared/fileExplorerTypes'
 
 const api = {
   // ─── PTY ───────────────────────────────────────────────────────────────────
@@ -178,6 +182,14 @@ const api = {
 
   githubActionsList(sessionId: string): Promise<GitHubActionsSnapshot> {
     return ipcRenderer.invoke(IPC.GITHUB_ACTIONS_LIST, sessionId)
+  },
+
+  fileExplorerListDir(sessionId: string, relPath: string): Promise<FileExplorerListResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_LIST_DIR, sessionId, relPath)
+  },
+
+  fileExplorerLoadFile(sessionId: string, relPath: string): Promise<FileExplorerFilePayload> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_LOAD_FILE, sessionId, relPath)
   },
 
   // ─── Persistencia ────────────────────────────────────────────────────────

@@ -61,6 +61,11 @@ export const IPC = {
   /** Renderer → main (invoke): workflow runs de GitHub Actions vía gh CLI */
   GITHUB_ACTIONS_LIST: 'githubActions:list',
 
+  /** Renderer → main (invoke): listar hijos de un directorio relativo al cwd de la sesión */
+  FILE_EXPLORER_LIST_DIR: 'fileExplorer:listDir',
+  /** Renderer → main (invoke): leer archivo + diff git para el explorador */
+  FILE_EXPLORER_LOAD_FILE: 'fileExplorer:loadFile',
+
   // ─── Persistencia de sesión ────────────────────────────────────────────────
   /** Renderer → main: guardar layout de pestañas + cwds */
   SESSION_SAVE: 'session:save',

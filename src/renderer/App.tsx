@@ -89,6 +89,7 @@ export const App: React.FC = () => {
     getSelection: () => string
     writeToTty: (s: string) => void
     toggleAiFullscreen: () => void
+    toggleExplorer: () => void
     serialize: () => string
   }>>(new Map())
   const splitSpawnCwdRef = useRef<Map<string, string>>(new Map())
@@ -587,6 +588,24 @@ export const App: React.FC = () => {
       }
 
       if (e.altKey || e.shiftKey) return
+
+      // ⌘E / Ctrl+E: explorador de archivos (panel activo)
+      if (e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
+        const target = e.target as HTMLElement | null
+        if (target && !target.closest('.xterm')) {
+          const tag = target.tagName
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+          if (target.isContentEditable) return
+        }
+        e.preventDefault()
+        e.stopPropagation()
+        const tabList = tabsRef.current
+        const aid = activeTabIdRef.current
+        const tab = tabList.find(t => t.id === aid)
+        if (!tab) return
+        termRefs.current.get(tab.activePaneId)?.toggleExplorer()
+        return
+      }
 
       // ⌘T / Ctrl+T: nueva pestaña
       if (e.key === 't' || e.key === 'T' || e.code === 'KeyT') {

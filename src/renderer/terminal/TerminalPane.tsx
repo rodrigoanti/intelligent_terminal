@@ -22,8 +22,10 @@ import { CdSuggest } from './CdSuggest'
 import { CmdSuggest } from './CmdSuggest'
 import { TerminalScrollDown } from './TerminalScrollDown'
 import { SplitPaneButton } from './SplitPaneButton'
+import { FileExplorerSidebar } from './explorer/FileExplorerSidebar'
 import '@xterm/xterm/css/xterm.css'
 import './TerminalPane.css'
+import './explorer/FileExplorer.css'
 
 function shellSingleQuotePosix(path: string): string {
   return `'${path.replace(/'/g, `'\\''`)}'`
@@ -277,6 +279,8 @@ export interface TerminalRef {
   writeToTty: (data: string) => void
   /** Alterna chat IA a pantalla completa en el panel ↔ colapsado (⌘I). */
   toggleAiFullscreen: () => void
+  /** Abre/cierra explorador de archivos a la derecha (⌘E). */
+  toggleExplorer: () => void
   /** Serializa el buffer completo (VT sequences) para persistencia */
   serialize: () => string
 }
@@ -351,6 +355,8 @@ export const TerminalPane: React.FC<Props> = ({
   const onBusyChangeRef = useRef(onBusyChange)
   onBusyChangeRef.current = onBusyChange
   const toggleAiFullscreenRef = useRef<() => void>(() => {})
+  const toggleExplorerRef = useRef<() => void>(() => {})
+  const [explorerOpen, setExplorerOpen] = useState(false)
   const configRef = useRef(config)
   configRef.current = config
 
@@ -580,8 +586,15 @@ export const TerminalPane: React.FC<Props> = ({
     return getScrollback(termRef.current, configRef.current.maxContextLines)
   }, [])
 
+  const toggleExplorer = useCallback(() => {
+    onRequestPaneFocusRef.current?.()
+    setExplorerOpen(v => !v)
+    queueMicrotask(() => { termRef.current?.focus() })
+  }, [])
+
   // Keep ref in sync so the effect below can expose it without re-running
   toggleAiFullscreenRef.current = toggleAiFullscreen
+  toggleExplorerRef.current = toggleExplorer
 
   /** IA: Ctrl+U + comando (misma ruta que teclear; limpia prompts copiados del modelo). */
   const injectLineFromAi = useCallback((rawCmd: string) => {
@@ -785,6 +798,7 @@ export const TerminalPane: React.FC<Props> = ({
         term.focus()
       },
       toggleAiFullscreen: () => toggleAiFullscreenRef.current(),
+      toggleExplorer: () => toggleExplorerRef.current(),
       serialize: () => serializeAddonRef.current?.serialize() ?? '',
     })
 
@@ -955,6 +969,17 @@ export const TerminalPane: React.FC<Props> = ({
   }, [tabActive, isActivePane, sessionId])
 
   useEffect(() => {
+    if (!tabActive || !fitRef.current || !termRef.current) return
+    const t = setTimeout(() => {
+      const term = termRef.current!
+      const fit = fitRef.current!
+      fitTerminalPreserveScroll(term, fit)
+      window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
+    }, 60)
+    return () => clearTimeout(t)
+  }, [explorerOpen, tabActive, sessionId])
+
+  useEffect(() => {
     if (!tabActive || !isActivePane || !fitRef.current || !termRef.current) return
     const t = setTimeout(() => {
       const term = termRef.current!
@@ -1115,6 +1140,8 @@ export const TerminalPane: React.FC<Props> = ({
             setGitPanelOpen(true)
             queueMicrotask(() => { termRef.current?.focus() })
           }}
+          explorerOpen={explorerOpen}
+          onToggleExplorer={toggleExplorer}
           onOpenFolderInFinder={() => {
             onRequestPaneFocusRef.current?.()
             void openThisPaneFolderInFinder()
@@ -1124,7 +1151,13 @@ export const TerminalPane: React.FC<Props> = ({
         />
       )}
 
-      <div className="terminal-pane-body">
+      <div
+        className={[
+          'terminal-pane-body',
+          explorerOpen && tabActive ? 'terminal-pane-body--explorer-open' : '',
+        ].filter(Boolean).join(' ')}
+      >
+        <div className="terminal-pane-body__workspace">
         <div
           className="terminal-pane-main"
           onMouseDown={e => {
@@ -1178,6 +1211,16 @@ export const TerminalPane: React.FC<Props> = ({
               />
             )}
           </div>
+        )}
+        </div>
+        {explorerOpen && tabActive && (
+          <FileExplorerSidebar
+            sessionId={sessionId}
+            onClose={() => {
+              setExplorerOpen(false)
+              queueMicrotask(() => { termRef.current?.focus() })
+            }}
+          />
         )}
       </div>
 
