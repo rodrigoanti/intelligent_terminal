@@ -67,6 +67,15 @@
   gap: 3px;
 }
 
+.pane-toolbar-reorder-handle {
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.pane-toolbar-reorder-handle:active {
+  cursor: grabbing;
+}
+
 .terminal-pane--inactive-pane .pane-toolbar {
   opacity: 0.72;
 }

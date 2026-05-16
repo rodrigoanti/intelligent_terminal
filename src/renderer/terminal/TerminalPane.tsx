@@ -326,6 +326,13 @@ export interface TerminalRef {
 
 export interface PaneToolbar {
   onClosePane?: () => void
+  /** Reordenar columnas dentro de la pestaña (solo si hay varios paneIds). */
+  paneReorder?: {
+    enabled: boolean
+    isGrabbed: boolean
+    onDragHandleStart: (e: React.DragEvent) => void
+    onDragHandleEnd: () => void
+  }
 }
 
 interface Props {
@@ -1115,6 +1122,42 @@ export const TerminalPane: React.FC<Props> = ({
     >
       {tabActive && (
         <div className="pane-toolbar" onMouseDown={onTerminalChromePointerDown}>
+          {(() => {
+            const pr = paneToolbar?.paneReorder
+            if (!pr?.enabled) return null
+            return (
+              <span
+                role="button"
+                tabIndex={-1}
+                draggable
+                className="pane-toolbar-reorder-handle terminal-chrome-btn"
+                title="Reordenar panel"
+                aria-label="Reordenar panel"
+                aria-grabbed={pr.isGrabbed}
+                onMouseDown={e => {
+                  /* No preventDefault: en Chromium cancela el inicio del drag nativo. */
+                  e.stopPropagation()
+                }}
+                onDragStart={e => {
+                  onRequestPaneFocusRef.current?.()
+                  pr.onDragHandleStart(e)
+                }}
+                onDragEnd={() => {
+                  pr.onDragHandleEnd()
+                  queueMicrotask(() => { termRef.current?.focus() })
+                }}
+              >
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <circle cx="8" cy="6" r="1.35"/>
+                  <circle cx="16" cy="6" r="1.35"/>
+                  <circle cx="8" cy="12" r="1.35"/>
+                  <circle cx="16" cy="12" r="1.35"/>
+                  <circle cx="8" cy="18" r="1.35"/>
+                  <circle cx="16" cy="18" r="1.35"/>
+                </svg>
+              </span>
+            )
+          })()}
           <button
             type="button"
             tabIndex={-1}
@@ -1188,8 +1231,8 @@ export const TerminalPane: React.FC<Props> = ({
               type="button"
               tabIndex={-1}
               className="terminal-split-corner-btn terminal-chrome-btn"
-              title="Otra terminal a la derecha (misma carpeta) · ⌘Y"
-              aria-label="Añadir terminal a la derecha"
+              title="Añadir terminal en esta pestaña (hasta 4) · ⌘Y"
+              aria-label="Añadir terminal en esta pestaña"
               onMouseDown={onTerminalChromePointerDown}
               onClick={() => {
                 onRequestPaneFocusRef.current?.()

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { DragEvent } from 'react'
 import { applyTheme, getTheme, normalizeThemeId } from '@themes/presets'
 import type { AppConfig } from '@shared/configSchema'
 import { CONFIG_DEFAULTS } from '@shared/configSchema'
@@ -14,9 +15,26 @@ export interface TabSession {
   title: string
   /** Tras renombrar a mano: el título del PTY no sustituye `title` */
   titleLocked?: boolean
-  /** Cada panel = una sesión PTY (UUID); la pestaña puede tener varios en fila */
+  /** Cada panel = una sesión PTY (UUID); como máximo `MAX_PANES_PER_TAB` por pestaña */
   paneIds: string[]
   activePaneId: string
+}
+
+/** Máximo de splits por pestaña (layout 2×2). */
+export const MAX_PANES_PER_TAB = 4
+
+function capTabsPaneCount(tabs: TabSession[], maxPanes: number): { tabs: TabSession[]; orphanPaneIds: string[] } {
+  const orphanPaneIds: string[] = []
+  const out = tabs.map(tab => {
+    if (tab.paneIds.length <= maxPanes) return tab
+    orphanPaneIds.push(...tab.paneIds.slice(maxPanes))
+    const paneIds = tab.paneIds.slice(0, maxPanes)
+    const activePaneId = paneIds.includes(tab.activePaneId)
+      ? tab.activePaneId
+      : paneIds[paneIds.length - 1]!
+    return { ...tab, paneIds, activePaneId }
+  })
+  return { tabs: out, orphanPaneIds }
 }
 
 /** Marca que las pestañas ya fueron cargadas desde persistencia (o se creó la primera). */
@@ -44,6 +62,10 @@ export const App: React.FC = () => {
   const [busyPanes, setBusyPanes] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [themePickerOpen, setThemePickerOpen] = useState(false)
+  /** Reordenar paneles: contexto durante HTML5 DnD (evita cierres obsoletos en dragOver). */
+  const paneReorderDragRef = useRef<{ tabId: string; dragPaneId: string } | null>(null)
+  const [paneDragOverPaneId, setPaneDragOverPaneId] = useState<string | null>(null)
+  const [paneDragSourcePaneId, setPaneDragSourcePaneId] = useState<string | null>(null)
   const termRefs = useRef<Map<string, {
     getSelection: () => string
     writeToTty: (s: string) => void
@@ -115,15 +137,34 @@ export const App: React.FC = () => {
   useEffect(() => {
     window.api.loadSession().then(saved => {
       if (saved && saved.tabs.length > 0) {
-        cwdsRef.current = saved.cwds ?? {}
-        const aiMap = saved.aiExpandedByPane ?? {}
+        const { tabs: cappedTabs, orphanPaneIds } = capTabsPaneCount(saved.tabs, MAX_PANES_PER_TAB)
+        const keptPaneIds = new Set(cappedTabs.flatMap(t => t.paneIds))
+        for (const pid of orphanPaneIds) {
+          window.api.ptyKill(pid)
+          splitSpawnCwdRef.current.delete(pid)
+          delete cwdsRef.current[pid]
+        }
+        setTimeout(() => {
+          for (const pid of orphanPaneIds) {
+            window.api.deleteScrollback(pid)
+            window.api.deleteAiChat(pid)
+            window.api.deleteCmdHistory(pid)
+          }
+        }, 0)
+        cwdsRef.current = Object.fromEntries(
+          Object.entries(saved.cwds ?? {}).filter(([id]) => keptPaneIds.has(id)),
+        )
+        const aiRaw = saved.aiExpandedByPane ?? {}
+        const aiMap = Object.fromEntries(
+          Object.entries(aiRaw).filter(([id]) => keptPaneIds.has(id)),
+        )
         aiExpandedByPaneRef.current = aiMap
         setAiExpandedByPane(aiMap)
         // Pre-cargar cwds guardados en splitSpawnCwdRef para que PTY arranque en la carpeta correcta
-        for (const [paneId, cwd] of Object.entries(saved.cwds ?? {})) {
+        for (const [paneId, cwd] of Object.entries(cwdsRef.current)) {
           splitSpawnCwdRef.current.set(paneId, cwd)
         }
-        setTabs(saved.tabs)
+        setTabs(cappedTabs)
         setActiveTabId(saved.activeTabId)
       } else {
         const t = newTab()
@@ -301,6 +342,8 @@ export const App: React.FC = () => {
   }, [])
 
   const handleSplitRight = useCallback(async (tabId: string, fromPaneId: string) => {
+    const tab = tabsRef.current.find(t => t.id === tabId)
+    if (!tab || tab.paneIds.length >= MAX_PANES_PER_TAB) return
     let cwd = ''
     try {
       cwd = await window.api.getSessionCwd(fromPaneId)
@@ -311,6 +354,7 @@ export const App: React.FC = () => {
     if (cwd) splitSpawnCwdRef.current.set(newPaneId, cwd)
     setTabs(prev => prev.map(t => {
       if (t.id !== tabId) return t
+      if (t.paneIds.length >= MAX_PANES_PER_TAB) return t
       const idx = t.paneIds.indexOf(fromPaneId)
       if (idx < 0) return t
       const next = [...t.paneIds]
@@ -372,6 +416,62 @@ export const App: React.FC = () => {
       next.splice(toIdx, 0, moved)
       return next
     })
+  }, [])
+
+  const handleReorderPanes = useCallback((tabId: string, dragPaneId: string, dropPaneId: string) => {
+    if (dragPaneId === dropPaneId) return
+    setTabs(prev => prev.map(tab => {
+      if (tab.id !== tabId) return tab
+      const panes = [...tab.paneIds]
+      const fromIdx = panes.indexOf(dragPaneId)
+      const toIdx = panes.indexOf(dropPaneId)
+      if (fromIdx < 0 || toIdx < 0) return tab
+      const [moved] = panes.splice(fromIdx, 1)
+      panes.splice(toIdx, 0, moved)
+      return { ...tab, paneIds: panes }
+    }))
+  }, [])
+
+  const clearPaneReorderDnD = useCallback((): void => {
+    paneReorderDragRef.current = null
+    setPaneDragOverPaneId(null)
+    setPaneDragSourcePaneId(null)
+  }, [])
+
+  const onPaneReorderHandleDragStart = useCallback((tabId: string, paneId: string, e: DragEvent): void => {
+    paneReorderDragRef.current = { tabId, dragPaneId: paneId }
+    setPaneDragSourcePaneId(paneId)
+    setPaneDragOverPaneId(null)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', paneId)
+    e.dataTransfer.setData('application/x-terminal-pane-id', paneId)
+  }, [])
+
+  const onPaneReorderHandleDragEnd = useCallback((): void => {
+    clearPaneReorderDnD()
+  }, [clearPaneReorderDnD])
+
+  /** Aceptar soltar sobre toda la celda (incl. xterm): dragover en fase captura + dragenter. */
+  const onPaneCellDragHover = useCallback((tabId: string, paneId: string, e: DragEvent): void => {
+    const d = paneReorderDragRef.current
+    if (!d || d.tabId !== tabId) return
+    if (d.dragPaneId === paneId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setPaneDragOverPaneId(prev => (prev !== paneId ? paneId : prev))
+  }, [])
+
+  const onPaneCellDrop = useCallback((tabId: string, dropPaneId: string, e: DragEvent): void => {
+    e.preventDefault()
+    const d = paneReorderDragRef.current
+    clearPaneReorderDnD()
+    if (!d || d.tabId !== tabId) return
+    if (d.dragPaneId === dropPaneId) return
+    handleReorderPanes(tabId, d.dragPaneId, dropPaneId)
+  }, [clearPaneReorderDnD, handleReorderPanes])
+
+  const onPaneCellDragLeave = useCallback((paneId: string): void => {
+    setPaneDragOverPaneId(prev => (prev === paneId ? null : prev))
   }, [])
 
   const handleThemeChange = useCallback((themeId: string) => {
@@ -480,7 +580,7 @@ export const App: React.FC = () => {
         const tabList = tabsRef.current
         const aid = activeTabIdRef.current
         const tab = tabList.find(t => t.id === aid)
-        if (!tab) return
+        if (!tab || tab.paneIds.length >= MAX_PANES_PER_TAB) return
         void handleSplitRightRef.current(tab.id, tab.activePaneId)
         return
       }
@@ -498,6 +598,60 @@ export const App: React.FC = () => {
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [handleAddTab])
+
+  const renderPaneCell = (tab: TabSession, paneId: string, layoutSlotClass?: string): React.ReactElement => (
+    <div
+      key={paneId}
+      className={[
+        'tab-terminal-pane-cell',
+        layoutSlotClass,
+        tab.paneIds.length > 1 && paneDragOverPaneId === paneId ? 'tab-terminal-pane-cell--drag-over' : '',
+      ].filter(Boolean).join(' ')}
+      {...(tab.paneIds.length > 1
+        ? {
+            onDragEnter: (e: DragEvent) => { onPaneCellDragHover(tab.id, paneId, e) },
+            onDragOverCapture: (e: DragEvent) => { onPaneCellDragHover(tab.id, paneId, e) },
+            onDrop: (e: DragEvent) => { onPaneCellDrop(tab.id, paneId, e) },
+            onDragLeave: () => { onPaneCellDragLeave(paneId) },
+          }
+        : {})}
+    >
+      <TerminalPane
+        sessionId={paneId}
+        aiExpanded={aiExpandedByPane[paneId] ?? false}
+        onAiExpandedChange={expanded => handleAiExpandedChange(paneId, expanded)}
+        tabActive={tab.id === activeTabId}
+        isActivePane={tab.id === activeTabId && tab.activePaneId === paneId}
+        initialPtyCwd={splitSpawnCwdRef.current.get(paneId)}
+        paneToolbar={{
+          onClosePane: tab.paneIds.length > 1 ? () => handleClosePane(tab.id, paneId) : undefined,
+          paneReorder:
+            tab.id === activeTabId && tab.paneIds.length > 1
+              ? {
+                  enabled: true,
+                  isGrabbed: paneDragSourcePaneId === paneId,
+                  onDragHandleStart: e => { onPaneReorderHandleDragStart(tab.id, paneId, e) },
+                  onDragHandleEnd: onPaneReorderHandleDragEnd,
+                }
+              : undefined,
+        }}
+        onRequestSplitPane={
+          tab.id === activeTabId && tab.activePaneId === paneId && tab.paneIds.length < MAX_PANES_PER_TAB
+            ? () => { void handleSplitRight(tab.id, paneId) }
+            : undefined
+        }
+        onRequestPaneFocus={() => handleFocusPane(tab.id, paneId)}
+        config={config}
+        onConfigPatch={patchConfig}
+        onTitleChange={title => handleTabTitleChange(tab.id, title)}
+        onBusyChange={busy => handleBusyChange(paneId, busy)}
+        onRegisterRef={ref => {
+          if (ref) termRefs.current.set(paneId, ref)
+          else termRefs.current.delete(paneId)
+        }}
+      />
+    </div>
+  )
 
   return (
     <div className="app-root">
@@ -587,45 +741,41 @@ export const App: React.FC = () => {
       {/* ── Main area ── */}
       <div className="main-area">
         <div className="terminals-container">
-          {configReady && sessionReady.loaded && tabs.map(tab => (
-            <div
-              key={tab.id}
-              className={[
-                'tab-terminal-group',
-                tab.id === activeTabId ? 'tab-terminal-group--active' : '',
-              ].filter(Boolean).join(' ')}
-            >
-              {tab.paneIds.map(paneId => (
-                <div key={paneId} className="tab-terminal-pane-cell">
-                  <TerminalPane
-                    sessionId={paneId}
-                    aiExpanded={aiExpandedByPane[paneId] ?? false}
-                    onAiExpandedChange={expanded => handleAiExpandedChange(paneId, expanded)}
-                    tabActive={tab.id === activeTabId}
-                    isActivePane={tab.id === activeTabId && tab.activePaneId === paneId}
-                    initialPtyCwd={splitSpawnCwdRef.current.get(paneId)}
-                    paneToolbar={{
-                      onClosePane: tab.paneIds.length > 1 ? () => handleClosePane(tab.id, paneId) : undefined,
-                    }}
-                    onRequestSplitPane={
-                      tab.id === activeTabId && tab.activePaneId === paneId
-                        ? () => { void handleSplitRight(tab.id, paneId) }
-                        : undefined
-                    }
-                    onRequestPaneFocus={() => handleFocusPane(tab.id, paneId)}
-                    config={config}
-                    onConfigPatch={patchConfig}
-                    onTitleChange={title => handleTabTitleChange(tab.id, title)}
-                    onBusyChange={busy => handleBusyChange(paneId, busy)}
-                    onRegisterRef={ref => {
-                      if (ref) termRefs.current.set(paneId, ref)
-                      else termRefs.current.delete(paneId)
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          ))}
+          {configReady && sessionReady.loaded && tabs.map(tab => {
+            const p = tab.paneIds
+            const n = p.length
+            const layoutClass =
+              n <= 1 ? 'tab-terminal-group--panes-1'
+              : n === 2 ? 'tab-terminal-group--panes-2'
+              : n === 3 ? 'tab-terminal-group--panes-3'
+              : 'tab-terminal-group--panes-4'
+
+            let inner: React.ReactNode
+            if (n === 0) {
+              inner = null
+            } else if (n === 1) {
+              inner = renderPaneCell(tab, p[0]!)
+            } else if (n === 2) {
+              inner = <>{p.map(pid => renderPaneCell(tab, pid))}</>
+            } else if (n === 3) {
+              inner = <>{p.map((paneId, idx) => renderPaneCell(tab, paneId, `tab-terminal-pane-cell--slot-3-${idx}`))}</>
+            } else {
+              inner = <>{p.map(pid => renderPaneCell(tab, pid))}</>
+            }
+
+            return (
+              <div
+                key={tab.id}
+                className={[
+                  'tab-terminal-group',
+                  tab.id === activeTabId ? 'tab-terminal-group--active' : '',
+                  layoutClass,
+                ].filter(Boolean).join(' ')}
+              >
+                {inner}
+              </div>
+            )
+          })}
         </div>
 
       </div>
