@@ -4,6 +4,7 @@ import { getTheme } from '@themes/presets'
 import { TitlebarMusicControls } from './TitlebarMusicControls'
 import { FontSizeControl } from './FontSizeControl'
 import { ThemePickerTrigger } from './ThemePickerTrigger'
+import { Button } from './ui/Button'
 import { Icon } from './ui/Icon'
 import './Titlebar.css'
 
@@ -53,15 +54,15 @@ export const Titlebar: React.FC<TitlebarProps> = ({
           onClick={onOpenThemePicker}
         />
 
-        <button
-          type="button"
+        <Button
+          variant="icon"
           tabIndex={-1}
-          className="icon-btn"
           onClick={onOpenSettings}
           title="Ajustes"
+          aria-label="Ajustes"
         >
           <Icon name="settings" size={15} />
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -70,10 +70,11 @@ export const TabBar = forwardRef<TabBarHandle, Props>(function TabBar({
     <>
       <div className="tabbar">
         <div className="tabbar-scroll">
-          {tabs.map(tab => (
+          {tabs.map((tab, index) => (
             <TabItem
               key={tab.id}
               tab={tab}
+              tabNumber={index + 1}
               isActive={tab.id === activeTabId}
               isDragOver={dragOverId === tab.id && dragId !== tab.id}
               isBusy={busyTabIds.has(tab.id)}

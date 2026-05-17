@@ -1,14 +1,7 @@
-import React from 'react'
-import type { FileExplorerChangeKind, FileExplorerEntry } from '@shared/fileExplorerTypes'
+import React, { useRef } from 'react'
+import type { FileExplorerEntry } from '@shared/fileExplorerTypes'
 import { Icon } from '../../components/ui/Icon'
 import { Spinner } from '../../components/ui/Spinner'
-
-const GIT_STATUS_LABEL: Partial<Record<FileExplorerChangeKind, string>> = {
-  modified: 'M',
-  staged: 'A',
-  untracked: 'U',
-  deleted: 'D',
-}
 
 interface FileExplorerTreeNodeProps {
   entry: FileExplorerEntry
@@ -16,9 +9,13 @@ interface FileExplorerTreeNodeProps {
   expanded: boolean
   loading: boolean
   selected: boolean
-  changeKind: FileExplorerChangeKind
+  isRenaming: boolean
+  renameValue: string
+  onRenameChange: (value: string) => void
+  onRenameSubmit: () => void
+  onRenameCancel: () => void
   onToggleDir: (relPath: string) => void
-  onSelectFile: (relPath: string) => void
+  onSelectEntry: (relPath: string, isDirectory: boolean) => boolean
 }
 
 export const FileExplorerTreeNode: React.FC<FileExplorerTreeNodeProps> = ({
@@ -27,48 +24,105 @@ export const FileExplorerTreeNode: React.FC<FileExplorerTreeNodeProps> = ({
   expanded,
   loading,
   selected,
-  changeKind,
+  isRenaming,
+  renameValue,
+  onRenameChange,
+  onRenameSubmit,
+  onRenameCancel,
   onToggleDir,
-  onSelectFile,
+  onSelectEntry,
 }) => {
   const isDir = entry.isDirectory
-  const gitLabel = changeKind !== 'clean' ? GIT_STATUS_LABEL[changeKind] : undefined
+  const escapePressedRef = useRef(false)
+  const depthStyle = { '--node-depth': depth } as React.CSSProperties
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
+    if (isRenaming) return
+    if (!onSelectEntry(entry.relPath, isDir)) return
+    if (isDir) {
+      onToggleDir(entry.relPath)
+    }
+    e.currentTarget.blur()
+  }
+
+  if (isRenaming) {
+    return (
+      <form
+        className="file-explorer-tree-node file-explorer-tree-node--renaming"
+        style={depthStyle}
+        onSubmit={e => {
+          e.preventDefault()
+          onRenameSubmit()
+        }}
+        onContextMenu={e => e.preventDefault()}
+      >
+        <span className="file-explorer-tree-node__chevron" aria-hidden>
+          {isDir ? (
+            loading ? (
+              <Spinner aria-label="Cargando" />
+            ) : (
+              <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={8} />
+            )
+          ) : (
+            <span className="file-explorer-tree-node__chevron-spacer" />
+          )}
+        </span>
+        <input
+          type="text"
+          className="file-explorer-tree-node__rename-input"
+          value={renameValue}
+          autoFocus
+          onChange={e => onRenameChange(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              escapePressedRef.current = true
+              onRenameCancel()
+            }
+          }}
+          onBlur={() => {
+            if (escapePressedRef.current) {
+              escapePressedRef.current = false
+              return
+            }
+            onRenameSubmit()
+          }}
+        />
+      </form>
+    )
+  }
 
   return (
     <button
       type="button"
+      role="treeitem"
+      aria-selected={selected}
       className={[
         'file-explorer-tree-node',
         selected ? 'file-explorer-tree-node--selected' : '',
         isDir ? 'file-explorer-tree-node--dir' : 'file-explorer-tree-node--file',
-        changeKind !== 'clean' ? `file-explorer-tree-node--git-${changeKind}` : '',
       ].filter(Boolean).join(' ')}
-      style={{ paddingLeft: `${8 + depth * 12}px` }}
-      onClick={() => {
-        if (isDir) onToggleDir(entry.relPath)
-        else onSelectFile(entry.relPath)
-      }}
+      style={depthStyle}
+      data-rel-path={entry.relPath}
+      data-is-directory={isDir ? 'true' : 'false'}
+      data-name={entry.name}
+      onClick={handleClick}
     >
       <span className="file-explorer-tree-node__chevron" aria-hidden>
         {isDir ? (
           loading ? (
             <Spinner aria-label="Cargando" />
           ) : (
-            <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={10} />
+            <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={8} />
           )
         ) : (
           <span className="file-explorer-tree-node__chevron-spacer" />
         )}
       </span>
       <span className="file-explorer-tree-node__icon" aria-hidden>
-        <Icon name={isDir ? 'folder' : 'files'} size={11} />
+        <Icon name={isDir ? 'folder' : 'files'} size={9} />
       </span>
       <span className="file-explorer-tree-node__name">{entry.name}</span>
-      {gitLabel && (
-        <span className="file-explorer-tree-node__git" aria-label={`git ${changeKind}`}>
-          {gitLabel}
-        </span>
-      )}
     </button>
   )
 }

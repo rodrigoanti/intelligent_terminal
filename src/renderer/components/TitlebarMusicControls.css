@@ -78,7 +78,7 @@
   width: 1.5px;
   height: 11px;
   transform-origin: bottom center;
-  transform: scaleY(0.12);
+  transform: scaleY(var(--bar-lv, 0.12));
   border-radius: 0.5px;
   background: color-mix(in srgb, var(--accent) 50%, var(--text-muted));
 }

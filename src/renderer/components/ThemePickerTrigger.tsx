@@ -25,14 +25,15 @@ export const ThemePickerTrigger: React.FC<ThemePickerTriggerProps> = ({
       type="button"
       tabIndex={-1}
       className="theme-picker-trigger"
+      style={{ '--swatch-bg': bg, '--swatch-accent': accent } as React.CSSProperties}
       onClick={onClick}
       title="Elegir tema"
       aria-haspopup="dialog"
       aria-expanded={isOpen}
     >
       <span className="theme-picker-trigger-palette" aria-hidden="true">
-        <span className="theme-picker-trigger-swatch-bg" style={{ background: bg }} />
-        <span className="theme-picker-trigger-swatch-accent" style={{ background: accent }} />
+        <span className="theme-picker-trigger-swatch-bg" />
+        <span className="theme-picker-trigger-swatch-accent" />
       </span>
       <span className="theme-picker-trigger-label">{themeName}</span>
     </button>

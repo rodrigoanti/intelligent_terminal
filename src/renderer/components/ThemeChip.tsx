@@ -27,6 +27,7 @@ export const ThemeChip: React.FC<ThemeChipProps> = ({
         isActive ? 'theme-picker-chip--active' : '',
         isFocused ? 'theme-picker-chip--focus' : '',
       ].filter(Boolean).join(' ')}
+      style={{ '--swatch-bg': bg, '--swatch-accent': accent } as React.CSSProperties}
       role="option"
       aria-selected={isActive}
       title={theme.name}
@@ -35,8 +36,8 @@ export const ThemeChip: React.FC<ThemeChipProps> = ({
       onFocus={onHover}
     >
       <span className="theme-picker-chip-palette" aria-hidden="true">
-        <span className="theme-picker-chip-swatch-bg" style={{ background: bg }} />
-        <span className="theme-picker-chip-swatch-accent" style={{ background: accent }} />
+        <span className="theme-picker-chip-swatch-bg" />
+        <span className="theme-picker-chip-swatch-accent" />
       </span>
       <span className="theme-picker-chip-name">{theme.name}</span>
     </button>

@@ -20,15 +20,26 @@ export const ThemePreview: React.FC<ThemePreviewProps> = ({ theme, currentThemeI
   const active = theme.id === currentThemeId
 
   const tpVars = {
-    '--tp-bg': bg, '--tp-border': border, '--tp-accent': accent, '--tp-surface': surface,
-    '--tp-muted': muted, '--tp-fg': fg, '--tp-tab-active': tabActive, '--tp-tab-inactive': tabInactive,
-    '--tp-xterm-bg': xt.background, '--tp-xterm-fg': xt.foreground,
+    '--tp-bg': bg,
+    '--tp-border': border,
+    '--tp-accent': accent,
+    '--tp-surface': surface,
+    '--tp-muted': muted,
+    '--tp-fg': fg,
+    '--tp-tab-active': tabActive,
+    '--tp-tab-inactive': tabInactive,
+    '--tp-xterm-bg': xt.background,
+    '--tp-xterm-fg': xt.foreground,
+    '--tp-xterm-cyan': xt.cyan,
+    '--tp-xterm-green': xt.green,
+    '--tp-xterm-blue': xt.blue,
+    '--tp-xterm-bright-black': xt.brightBlack,
   } as React.CSSProperties
 
   return (
     <div
       className="theme-picker-preview theme-picker-preview--terminal-app"
-      style={{ background: bg, borderColor: border, color: fg, ...tpVars }}
+      style={tpVars}
     >
       <div className="theme-picker-tp-shell" aria-hidden="true">
         <div className="theme-picker-tp-titlebar" />
@@ -41,39 +52,39 @@ export const ThemePreview: React.FC<ThemePreviewProps> = ({ theme, currentThemeI
         </div>
         <div className="theme-picker-tp-term">
           <div className="theme-picker-tp-line">
-            <span style={{ color: xt.cyan }}>user</span>
-            <span style={{ color: muted }}>@</span>
-            <span style={{ color: xt.green }}>host</span>
-            <span style={{ color: muted }}>:</span>
-            <span style={{ color: xt.blue }}>~/proyecto</span>
-            <span style={{ color: accent }}>$ </span>
-            <span style={{ color: xt.foreground }}>ls -la</span>
+            <span className="theme-picker-tp-user">user</span>
+            <span className="theme-picker-tp-muted">@</span>
+            <span className="theme-picker-tp-host">host</span>
+            <span className="theme-picker-tp-muted">:</span>
+            <span className="theme-picker-tp-path">~/proyecto</span>
+            <span className="theme-picker-tp-prompt">$ </span>
+            <span className="theme-picker-tp-cmd">ls -la</span>
           </div>
-          <div className="theme-picker-tp-line" style={{ color: xt.brightBlack }}>total 24</div>
+          <div className="theme-picker-tp-line theme-picker-tp-line--dim">total 24</div>
           <div className="theme-picker-tp-line">
-            <span style={{ color: xt.blue }}>drwxr-xr-x</span>
-            <span style={{ color: xt.brightBlack }}>  5 user  staff  160 Jan  2 10:00 .</span>
+            <span className="theme-picker-tp-dir">drwxr-xr-x</span>
+            <span className="theme-picker-tp-line--dim">  5 user  staff  160 Jan  2 10:00 .</span>
           </div>
           <div className="theme-picker-tp-line">
-            <span style={{ color: xt.cyan }}>user</span>
-            <span style={{ color: muted }}>@</span>
-            <span style={{ color: xt.green }}>host</span>
-            <span style={{ color: muted }}>:</span>
-            <span style={{ color: xt.blue }}>~/proyecto</span>
-            <span style={{ color: accent }}>$ </span>
+            <span className="theme-picker-tp-user">user</span>
+            <span className="theme-picker-tp-muted">@</span>
+            <span className="theme-picker-tp-host">host</span>
+            <span className="theme-picker-tp-muted">:</span>
+            <span className="theme-picker-tp-path">~/proyecto</span>
+            <span className="theme-picker-tp-prompt">$ </span>
             <span className="theme-picker-tp-cursor">▌</span>
           </div>
         </div>
         <div className="theme-picker-tp-ai-dock">
-          <span className="theme-picker-tp-ai-hash" style={{ color: accent }}>#</span>
+          <span className="theme-picker-tp-ai-hash">#</span>
           <span className="theme-picker-tp-ai-label">ia</span>
           <span className="theme-picker-tp-ai-model">local</span>
-          <span className="theme-picker-tp-ai-hint" style={{ color: accent }}>▲</span>
+          <span className="theme-picker-tp-ai-hint">▲</span>
         </div>
       </div>
-      <div className="theme-picker-preview-meta" style={{ borderTopColor: border, background: surface }}>
-        <span className="theme-picker-preview-name" style={{ color: fg }}>{theme.name}</span>
-        {active && <span className="theme-picker-preview-active" style={{ color: accent }}>*</span>}
+      <div className="theme-picker-preview-meta">
+        <span className="theme-picker-preview-name">{theme.name}</span>
+        {active && <span className="theme-picker-preview-active">*</span>}
       </div>
     </div>
   )

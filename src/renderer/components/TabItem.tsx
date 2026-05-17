@@ -5,6 +5,8 @@ import { Spinner } from './ui/Spinner'
 
 interface TabItemProps {
   tab: TabSession
+  /** Posición 1-based en la barra (⌘1…⌘9) */
+  tabNumber: number
   isActive: boolean
   isDragOver: boolean
   isBusy: boolean
@@ -27,6 +29,7 @@ interface TabItemProps {
 
 export const TabItem: React.FC<TabItemProps> = ({
   tab,
+  tabNumber,
   isActive,
   isDragOver,
   isBusy,
@@ -112,6 +115,12 @@ export const TabItem: React.FC<TabItemProps> = ({
           title={isActive ? 'Clic para renombrar' : undefined}
         >
           {tab.title}
+        </span>
+      )}
+
+      {!isEditing && (
+        <span className="tab-number" aria-label={`Pestaña ${tabNumber}`}>
+          {tabNumber}
         </span>
       )}
 

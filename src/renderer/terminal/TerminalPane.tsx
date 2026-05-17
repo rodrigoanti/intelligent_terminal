@@ -7,6 +7,7 @@ import { getTheme } from '@themes/presets'
 import type { AppConfig } from '@shared/configSchema'
 import { CONFIG_DEFAULTS } from '@shared/configSchema'
 import { feedCompletedUserLines } from '@renderer/history/feedCompletedUserLines'
+import { isClearCommandLine } from '@renderer/terminal/isClearCommand'
 import { stripLeadingShellPrompts } from '@renderer/terminal/stripShellPromptPrefix'
 import { AiPanel } from '@renderer/components/AiPanel'
 import { ConfirmTerminalModal } from '@renderer/components/ConfirmTerminalModal'
@@ -22,7 +23,8 @@ import { CdSuggest } from './CdSuggest'
 import { CmdSuggest } from './CmdSuggest'
 import { TerminalScrollDown } from './TerminalScrollDown'
 import { SplitPaneButton } from './SplitPaneButton'
-import { FileExplorerSidebar } from './explorer/FileExplorerSidebar'
+import { FileExplorerSidebar, type FileExplorerSidebarHandle } from './explorer/FileExplorerSidebar'
+import type { FileExplorerPersistedState } from '@shared/fileExplorerPersistedState'
 import '@xterm/xterm/css/xterm.css'
 import './TerminalPane.css'
 import './explorer/FileExplorer.css'
@@ -301,12 +303,18 @@ interface Props {
   /** Cada panel: chat IA expandido (lo persiste App en session.json) */
   aiExpanded: boolean
   onAiExpandedChange: (expanded: boolean) => void
+  fileExplorer: FileExplorerPersistedState
+  onFileExplorerChange: (state: FileExplorerPersistedState) => void
   /** La pestaña está seleccionada en la barra */
   tabActive: boolean
   /** Este panel tiene el foco dentro de la pestaña (clic o último split) */
   isActivePane: boolean
-  /** cwd inicial al crear el PTY (solo panel nuevo al dividir) */
+  /** cwd inicial al crear el PTY (restaurado o panel dividido). */
   initialPtyCwd?: string
+  /** Tras arrancar el PTY con un cwd conocido (persistencia en App). */
+  onPtyCwdInitialized?: (sessionId: string, cwd: string) => void
+  /** Tras un `cd` exitoso: persistir cwd de este panel en session.json. */
+  onPaneCwdChanged?: (sessionId: string, cwd: string) => void
   paneToolbar?: PaneToolbar
   /** Otra terminal a la derecha (solo en el panel activo de la pestaña activa) */
   onRequestSplitPane?: () => void
@@ -329,9 +337,13 @@ export const TerminalPane: React.FC<Props> = ({
   sessionId,
   aiExpanded,
   onAiExpandedChange,
+  fileExplorer,
+  onFileExplorerChange,
   tabActive,
   isActivePane,
   initialPtyCwd,
+  onPtyCwdInitialized,
+  onPaneCwdChanged,
   paneToolbar,
   onRequestSplitPane,
   onRequestPaneFocus,
@@ -354,9 +366,23 @@ export const TerminalPane: React.FC<Props> = ({
   const isBusyRef = useRef(false)
   const onBusyChangeRef = useRef(onBusyChange)
   onBusyChangeRef.current = onBusyChange
+  const onPtyCwdInitializedRef = useRef(onPtyCwdInitialized)
+  onPtyCwdInitializedRef.current = onPtyCwdInitialized
+  const onPaneCwdChangedRef = useRef(onPaneCwdChanged)
+  onPaneCwdChangedRef.current = onPaneCwdChanged
   const toggleAiFullscreenRef = useRef<() => void>(() => {})
   const toggleExplorerRef = useRef<() => void>(() => {})
-  const [explorerOpen, setExplorerOpen] = useState(false)
+  const explorerRef = useRef<FileExplorerSidebarHandle>(null)
+  const explorerOpen = fileExplorer.open
+  const explorerOpenRef = useRef(explorerOpen)
+  explorerOpenRef.current = explorerOpen
+  const onFileExplorerChangeRef = useRef(onFileExplorerChange)
+  onFileExplorerChangeRef.current = onFileExplorerChange
+  const fileExplorerRef = useRef(fileExplorer)
+  fileExplorerRef.current = fileExplorer
+  const patchFileExplorer = useCallback((patch: Partial<FileExplorerPersistedState>) => {
+    onFileExplorerChangeRef.current({ ...fileExplorerRef.current, ...patch })
+  }, [])
   const configRef = useRef(config)
   configRef.current = config
 
@@ -428,6 +454,7 @@ export const TerminalPane: React.FC<Props> = ({
     setShellOrToolbarFocused(
       Boolean(
         ae.closest('.terminal-pane-body') ||
+          ae.closest('.terminal-file-explorer') ||
           ae.closest('.pane-toolbar') ||
           ae.closest('.terminal-chrome-btn'),
       ),
@@ -588,8 +615,8 @@ export const TerminalPane: React.FC<Props> = ({
 
   const toggleExplorer = useCallback(() => {
     onRequestPaneFocusRef.current?.()
-    setExplorerOpen(v => !v)
-    queueMicrotask(() => { termRef.current?.focus() })
+    const nextOpen = !fileExplorerRef.current.open
+    onFileExplorerChangeRef.current({ ...fileExplorerRef.current, open: nextOpen })
   }, [])
 
   // Keep ref in sync so the effect below can expose it without re-running
@@ -642,13 +669,22 @@ export const TerminalPane: React.FC<Props> = ({
       if (e.type !== 'keydown') return true
       const accel = e.metaKey || e.ctrlKey
       if (!accel || e.altKey || e.shiftKey) return true
-      if (e.key !== 'f' && e.key !== 'F' && e.code !== 'KeyF') return true
+
+      const isFind = e.key === 'f' || e.key === 'F' || e.code === 'KeyF'
+      const isGit = e.key === 'g' || e.key === 'G' || e.code === 'KeyG'
+      if (!isFind && !isGit) return true
+
       e.preventDefault()
       e.stopPropagation()
       queueMicrotask(() => {
-        setFindModalOpen(true)
-        setFindModalBuffer([])
-        setFindModalHistory([])
+        if (isFind) {
+          setFindModalOpen(true)
+          setFindModalBuffer([])
+          setFindModalHistory([])
+        } else {
+          onRequestPaneFocusRef.current?.()
+          setGitPanelOpen(true)
+        }
       })
       return false
     })
@@ -727,6 +763,22 @@ export const TerminalPane: React.FC<Props> = ({
       }, 5000)
     }
 
+    const clearTerminalScrollback = (): void => {
+      if (!termAlive || termRef.current !== term) return
+      try {
+        term.clear()
+        scheduleTerminalCanvasRepaint()
+        updateTerminalScrollDown()
+        if (scrollbackSaveTimerRef.current) {
+          clearTimeout(scrollbackSaveTimerRef.current)
+          scrollbackSaveTimerRef.current = null
+        }
+        window.api.deleteScrollback(sessionId)
+      } catch {
+        /* dispose / dimensions */
+      }
+    }
+
     const writeToPty = (data: string): void => { window.api.ptyWrite(sessionId, data) }
 
     const absorbUserInput = (raw: string): void => {
@@ -748,12 +800,21 @@ export const TerminalPane: React.FC<Props> = ({
         }, 350)
       }
       for (const line of completedLines) {
-        window.api.recordCdLine(sessionId, line)
+        if (isClearCommandLine(line)) {
+          clearTerminalScrollback()
+          continue
+        }
+        void window.api.recordCdLine(sessionId, line).then(newCwd => {
+          if (newCwd) onPaneCwdChangedRef.current?.(sessionId, newCwd)
+        })
         if (!/^\s*(?:builtin\s+|command\s+)?cd(\s|$)/i.test(line.trim())) {
           setRecentCommands(prev => pushRecentUnique(prev, line, MAX_RECENT_COMMANDS))
         }
         if (/^\s*(?:builtin\s+|command\s+)?cd(\s|$)/i.test(line.trim())) {
           void loadCdPaths()
+          if (explorerOpenRef.current) {
+            queueMicrotask(() => { explorerRef.current?.resetTreeForNewCwd() })
+          }
         }
       }
       const t = draft.trimStart()
@@ -824,6 +885,7 @@ export const TerminalPane: React.FC<Props> = ({
     if (containerRef.current) resizeObs.observe(containerRef.current)
 
     // Suscribirse ANTES de ptyCreate: la salida inicial del shell no se pierde por carrera IPC.
+    let lastPtyErrorAt = 0
     const unsubData = window.api.onPtyData(sessionId, data => {
       if (!termAlive || termRef.current !== term) return
       writePtyDataWithFollowScroll(term, data, scheduleTerminalCanvasRepaint)
@@ -840,6 +902,8 @@ export const TerminalPane: React.FC<Props> = ({
     })
     const unsubExit = window.api.onPtyExit(sessionId, code => {
       if (!termAlive || termRef.current !== term) return
+      // Evita re-spawn tras un spawn fallido cuyo kill dejó un onExit tardío del PTY anterior.
+      if (Date.now() - lastPtyErrorAt < 800) return
       writePtyDataWithFollowScroll(
         term,
         `\r\n\x1b[2m[proceso terminado — código ${code}]\x1b[0m\r\n`,
@@ -870,6 +934,7 @@ export const TerminalPane: React.FC<Props> = ({
     })
     const unsubErr = window.api.onPtyError(sessionId, message => {
       if (!termAlive || termRef.current !== term) return
+      lastPtyErrorAt = Date.now()
       writePtyDataWithFollowScroll(
         term,
         `\r\n\x1b[31m${message}\x1b[0m\r\n`,
@@ -877,7 +942,9 @@ export const TerminalPane: React.FC<Props> = ({
       )
     })
 
-    window.api.ptyCreate(sessionId, initialPtyCwd?.trim() || undefined)
+    const spawnCwd = initialPtyCwd?.trim()
+    window.api.ptyCreate(sessionId, spawnCwd || undefined)
+    if (spawnCwd) onPtyCwdInitializedRef.current?.(sessionId, spawnCwd)
     window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
 
     return () => {
@@ -967,17 +1034,6 @@ export const TerminalPane: React.FC<Props> = ({
       }, 10)
     }
   }, [tabActive, isActivePane, sessionId])
-
-  useEffect(() => {
-    if (!tabActive || !fitRef.current || !termRef.current) return
-    const t = setTimeout(() => {
-      const term = termRef.current!
-      const fit = fitRef.current!
-      fitTerminalPreserveScroll(term, fit)
-      window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
-    }, 60)
-    return () => clearTimeout(t)
-  }, [explorerOpen, tabActive, sessionId])
 
   useEffect(() => {
     if (!tabActive || !isActivePane || !fitRef.current || !termRef.current) return
@@ -1151,12 +1207,7 @@ export const TerminalPane: React.FC<Props> = ({
         />
       )}
 
-      <div
-        className={[
-          'terminal-pane-body',
-          explorerOpen && tabActive ? 'terminal-pane-body--explorer-open' : '',
-        ].filter(Boolean).join(' ')}
-      >
+      <div className="terminal-pane-body">
         <div className="terminal-pane-body__workspace">
         <div
           className="terminal-pane-main"
@@ -1212,10 +1263,17 @@ export const TerminalPane: React.FC<Props> = ({
             )}
           </div>
         )}
-        </div>
-        {explorerOpen && tabActive && (
-          <FileExplorerSidebar sessionId={sessionId} />
+        {explorerOpen && (
+          <FileExplorerSidebar
+            ref={explorerRef}
+            sessionId={sessionId}
+            themeId={config.themeId}
+            explorerState={fileExplorer}
+            onExplorerStateChange={patchFileExplorer}
+            onToggleExplorer={toggleExplorer}
+          />
         )}
+        </div>
       </div>
 
       <div

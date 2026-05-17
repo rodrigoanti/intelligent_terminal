@@ -69,10 +69,16 @@
   overflow: hidden;
 }
 
-.theme-picker-trigger-swatch-bg,
+.theme-picker-trigger-swatch-bg {
+  flex: 1;
+  min-width: 0;
+  background: var(--swatch-bg, transparent);
+}
+
 .theme-picker-trigger-swatch-accent {
   flex: 1;
   min-width: 0;
+  background: var(--swatch-accent, transparent);
 }
 
 .theme-picker-trigger-label {

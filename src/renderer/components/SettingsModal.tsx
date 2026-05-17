@@ -117,7 +117,7 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       title="ajustes"
       size="lg"
       zIndex={720}
-      bodyClassName="modal-body"
+      bodyLayout="spacious"
       footer={
         <div className="modal-footer">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
@@ -245,14 +245,14 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           Los ajustes se guardan en <code>config.json</code> dentro de la carpeta de datos de la aplicación.
           Puedes editarlo directamente con cualquier editor de texto.
         </p>
-        <button
-          type="button"
-          className="reveal-btn"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => window.api.openConfigFolder()}
         >
           <Icon name="folder" size={12} />
           Revelar carpeta de configuración en Finder
-        </button>
+        </Button>
       </SettingsSection>
 
       {errors.length > 0 && (

@@ -3,6 +3,11 @@ import type { DragEvent } from 'react'
 import { applyTheme, getTheme, normalizeThemeId } from '@themes/presets'
 import type { AppConfig } from '@shared/configSchema'
 import { CONFIG_DEFAULTS } from '@shared/configSchema'
+import {
+  DEFAULT_FILE_EXPLORER_STATE,
+  normalizeFileExplorerState,
+  type FileExplorerPersistedState,
+} from '@shared/fileExplorerPersistedState'
 import { TabBar, type TabBarHandle } from './components/TabBar'
 import { TerminalPane } from './terminal/TerminalPane'
 import { SettingsModal } from './components/SettingsModal'
@@ -78,6 +83,7 @@ export const App: React.FC = () => {
   const [configReady, setConfigReady] = useState(false)
   const [sessionReady, setSessionReady] = useState<SessionReady>({ loaded: false })
   const [aiExpandedByPane, setAiExpandedByPane] = useState<Record<string, boolean>>({})
+  const [explorerByPane, setExplorerByPane] = useState<Record<string, FileExplorerPersistedState>>({})
   const [busyPanes, setBusyPanes] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [themePickerOpen, setThemePickerOpen] = useState(false)
@@ -95,6 +101,7 @@ export const App: React.FC = () => {
   const splitSpawnCwdRef = useRef<Map<string, string>>(new Map())
   const cwdsRef = useRef<Record<string, string>>({})
   const aiExpandedByPaneRef = useRef<Record<string, boolean>>({})
+  const explorerByPaneRef = useRef<Record<string, FileExplorerPersistedState>>({})
   const tabsRef = useRef(tabs)
   const activeTabIdRef = useRef(activeTabId)
   tabsRef.current = tabs
@@ -103,6 +110,56 @@ export const App: React.FC = () => {
   // Guardar sesión con debounce al cambiar tabs / activeTabId
   const saveSessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  /** Resuelve cwd para persistir: IPC, último guardado o cwd de spawn pendiente. */
+  const resolvePaneCwdForPersist = useCallback(async (paneId: string): Promise<string> => {
+    const fallback =
+      cwdsRef.current[paneId]?.trim() ||
+      splitSpawnCwdRef.current.get(paneId)?.trim() ||
+      ''
+    try {
+      const cwd = (await window.api.getSessionCwd(paneId)).trim()
+      return cwd || fallback
+    } catch {
+      return fallback
+    }
+  }, [])
+
+  const rememberPaneCwd = useCallback((paneId: string, cwd: string): void => {
+    const dir = cwd.trim()
+    if (!dir) return
+    cwdsRef.current = { ...cwdsRef.current, [paneId]: dir }
+    splitSpawnCwdRef.current.set(paneId, dir)
+  }, [])
+
+  const buildSessionSnapshot = useCallback(() => {
+    const currentTabs = tabsRef.current
+    const currentActiveTabId = activeTabIdRef.current
+    if (!currentTabs.length || !currentActiveTabId) return null
+    return {
+      version: 1 as const,
+      activeTabId: currentActiveTabId,
+      tabs: currentTabs,
+      cwds: { ...cwdsRef.current },
+      aiExpandedByPane: { ...aiExpandedByPaneRef.current },
+      explorerByPane: { ...explorerByPaneRef.current },
+    }
+  }, [])
+
+  const saveSessionNow = useCallback(async () => {
+    const snapshot = buildSessionSnapshot()
+    if (!snapshot) return
+    await window.api.saveSession(snapshot)
+  }, [buildSessionSnapshot])
+
+  /** Tras `cd`: actualiza cwds y escribe session.json de inmediato. */
+  const persistPaneCwdOnCd = useCallback(
+    (paneId: string, cwd: string) => {
+      rememberPaneCwd(paneId, cwd)
+      void saveSessionNow()
+    },
+    [rememberPaneCwd, saveSessionNow],
+  )
+
   /** Consulta el cwd actual de cada pane via IPC y lo guarda en cwdsRef antes de persistir. */
   const flushCwdsAndSave = useCallback(async () => {
     const currentTabs = tabsRef.current
@@ -110,24 +167,11 @@ export const App: React.FC = () => {
     if (!currentTabs.length || !currentActiveTabId) return
     const allPaneIds = currentTabs.flatMap(t => t.paneIds)
     const entries = await Promise.all(
-      allPaneIds.map(async paneId => {
-        try {
-          const cwd = await window.api.getSessionCwd(paneId)
-          return [paneId, cwd] as [string, string]
-        } catch {
-          return [paneId, cwdsRef.current[paneId] ?? ''] as [string, string]
-        }
-      })
+      allPaneIds.map(async paneId => [paneId, await resolvePaneCwdForPersist(paneId)] as const),
     )
     cwdsRef.current = Object.fromEntries(entries)
-    await window.api.saveSession({
-      version: 1,
-      activeTabId: currentActiveTabId,
-      tabs: currentTabs,
-      cwds: cwdsRef.current,
-      aiExpandedByPane: { ...aiExpandedByPaneRef.current },
-    })
-  }, [])
+    await saveSessionNow()
+  }, [resolvePaneCwdForPersist, saveSessionNow])
 
   const scheduleSaveSession = useCallback(() => {
     if (saveSessionTimerRef.current) clearTimeout(saveSessionTimerRef.current)
@@ -172,7 +216,9 @@ export const App: React.FC = () => {
           }
         }, 0)
         cwdsRef.current = Object.fromEntries(
-          Object.entries(saved.cwds ?? {}).filter(([id]) => keptPaneIds.has(id)),
+          Object.entries(saved.cwds ?? {})
+            .filter(([id]) => keptPaneIds.has(id))
+            .filter(([, cwd]) => Boolean(cwd?.trim())),
         )
         const aiRaw = saved.aiExpandedByPane ?? {}
         const aiMap = Object.fromEntries(
@@ -180,9 +226,18 @@ export const App: React.FC = () => {
         )
         aiExpandedByPaneRef.current = aiMap
         setAiExpandedByPane(aiMap)
-        // Pre-cargar cwds guardados en splitSpawnCwdRef para que PTY arranque en la carpeta correcta
+        const explorerRaw = saved.explorerByPane ?? {}
+        const explorerMap = Object.fromEntries(
+          Object.entries(explorerRaw)
+            .filter(([id]) => keptPaneIds.has(id))
+            .map(([id, st]) => [id, normalizeFileExplorerState(st)]),
+        )
+        explorerByPaneRef.current = explorerMap
+        setExplorerByPane(explorerMap)
+        // Pre-cargar cwds guardados en splitSpawnCwdRef para que PTY arranque en la carpeta correcta.
+        // Solo entradas no vacías (el operador ?? no atrapa ""; usar || en initialPtyCwd).
         for (const [paneId, cwd] of Object.entries(cwdsRef.current)) {
-          splitSpawnCwdRef.current.set(paneId, cwd)
+          if (cwd.trim()) splitSpawnCwdRef.current.set(paneId, cwd)
         }
         setTabs(cappedTabs)
         setActiveTabId(saved.activeTabId)
@@ -223,14 +278,7 @@ export const App: React.FC = () => {
         if (currentTabs.length && currentActiveTabId) {
           const allPaneIds = currentTabs.flatMap(t => t.paneIds)
           const entries = await Promise.all(
-            allPaneIds.map(async paneId => {
-              try {
-                const cwd = await window.api.getSessionCwd(paneId)
-                return [paneId, cwd] as [string, string]
-              } catch {
-                return [paneId, cwdsRef.current[paneId] ?? ''] as [string, string]
-              }
-            })
+            allPaneIds.map(async paneId => [paneId, await resolvePaneCwdForPersist(paneId)] as const),
           )
           cwdsRef.current = Object.fromEntries(entries)
           await window.api.saveSession({
@@ -239,12 +287,13 @@ export const App: React.FC = () => {
             tabs: currentTabs,
             cwds: cwdsRef.current,
             aiExpandedByPane: { ...aiExpandedByPaneRef.current },
+            explorerByPane: { ...explorerByPaneRef.current },
           })
         }
         window.api.sendCloseReady(scrollbacks)
       })()
     })
-  }, [])
+  }, [resolvePaneCwdForPersist])
 
   const handleBusyChange = useCallback((paneId: string, busy: boolean) => {
     setBusyPanes(prev => {
@@ -274,6 +323,18 @@ export const App: React.FC = () => {
     scheduleSaveSession()
   }, [scheduleSaveSession])
 
+  const handleFileExplorerChange = useCallback(
+    (paneId: string, state: FileExplorerPersistedState) => {
+      setExplorerByPane(prev => {
+        const next = { ...prev, [paneId]: state }
+        explorerByPaneRef.current = next
+        return next
+      })
+      scheduleSaveSession()
+    },
+    [scheduleSaveSession],
+  )
+
   const handleAddTab = useCallback(() => {
     const tab = newTab()
     setTabs(prev => [...prev, tab])
@@ -296,6 +357,12 @@ export const App: React.FC = () => {
         const next = { ...ae }
         for (const p of victim.paneIds) delete next[p]
         aiExpandedByPaneRef.current = next
+        return next
+      })
+      setExplorerByPane(ex => {
+        const next = { ...ex }
+        for (const p of victim.paneIds) delete next[p]
+        explorerByPaneRef.current = next
         return next
       })
       const paneIds = [...victim.paneIds]
@@ -342,6 +409,12 @@ export const App: React.FC = () => {
       aiExpandedByPaneRef.current = next
       return next
     })
+    setExplorerByPane(prev => {
+      const next = { ...prev }
+      delete next[paneId]
+      explorerByPaneRef.current = next
+      return next
+    })
     window.api.ptyKill(paneId)
     termRefs.current.delete(paneId)
     splitSpawnCwdRef.current.delete(paneId)
@@ -383,7 +456,7 @@ export const App: React.FC = () => {
       /* usar cwd por defecto en main */
     }
     const newPaneId = crypto.randomUUID()
-    if (cwd) splitSpawnCwdRef.current.set(newPaneId, cwd)
+    if (cwd) rememberPaneCwd(newPaneId, cwd)
     setTabs(prev => prev.map(t => {
       if (t.id !== tabId) return t
       if (t.paneIds.length >= MAX_PANES_PER_TAB) return t
@@ -393,7 +466,8 @@ export const App: React.FC = () => {
       next.splice(idx + 1, 0, newPaneId)
       return { ...t, paneIds: next, activePaneId: newPaneId }
     }))
-  }, [])
+    scheduleSaveSession()
+  }, [rememberPaneCwd, scheduleSaveSession])
 
   const handleFocusPane = useCallback((tabId: string, paneId: string) => {
     setActiveTabId(tabId)
@@ -568,6 +642,21 @@ export const App: React.FC = () => {
       return false
     }
 
+    const isFocusInFileExplorer = (): boolean => {
+      const focus = document.activeElement
+      return focus instanceof HTMLElement && focus.closest('.terminal-file-explorer') !== null
+    }
+
+    /** Bloquea ⌘E fuera de xterm y del explorador (p. ej. ajustes, otros modales). */
+    const shouldBlockExplorerToggleShortcut = (target: HTMLElement | null): boolean => {
+      if (isFocusInFileExplorer()) return false
+      if (!target || target.closest('.xterm')) return false
+      const tag = target.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+      if (target.isContentEditable) return true
+      return false
+    }
+
     const onKeyDown = (e: KeyboardEvent): void => {
       const accel = e.metaKey || e.ctrlKey
       if (!accel) return
@@ -591,12 +680,8 @@ export const App: React.FC = () => {
 
       // ⌘E / Ctrl+E: explorador de archivos (panel activo)
       if (e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
-        const target = e.target as HTMLElement | null
-        if (target && !target.closest('.xterm')) {
-          const tag = target.tagName
-          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-          if (target.isContentEditable) return
-        }
+        if (isFocusInFileExplorer()) return
+        if (shouldBlockExplorerToggleShortcut(e.target as HTMLElement | null)) return
         e.preventDefault()
         e.stopPropagation()
         const tabList = tabsRef.current
@@ -674,9 +759,13 @@ export const App: React.FC = () => {
         sessionId={paneId}
         aiExpanded={aiExpandedByPane[paneId] ?? false}
         onAiExpandedChange={expanded => handleAiExpandedChange(paneId, expanded)}
+        fileExplorer={explorerByPane[paneId] ?? DEFAULT_FILE_EXPLORER_STATE}
+        onFileExplorerChange={state => handleFileExplorerChange(paneId, state)}
         tabActive={tab.id === activeTabId}
         isActivePane={tab.id === activeTabId && tab.activePaneId === paneId}
-        initialPtyCwd={splitSpawnCwdRef.current.get(paneId)}
+        initialPtyCwd={splitSpawnCwdRef.current.get(paneId) || cwdsRef.current[paneId] || undefined}
+        onPtyCwdInitialized={rememberPaneCwd}
+        onPaneCwdChanged={persistPaneCwdOnCd}
         paneToolbar={{
           onClosePane: tab.paneIds.length > 1 ? () => handleClosePane(tab.id, paneId) : undefined,
           paneReorder:

@@ -86,9 +86,9 @@ export const ThemePickerModal: React.FC<Props> = ({
       title="tema"
       titleId="theme-picker-title"
       size="xl"
-      panelClassName="theme-picker-modal-panel"
+      panelVariant="theme-picker"
       zIndex={660}
-      bodyClassName="terminal-modal-body theme-picker-body"
+      bodyLayout="flush"
       footer={
         <span className="theme-picker-footer-hint">
           filtro por nombre · clic o [enter] · ← → · esc cerrar

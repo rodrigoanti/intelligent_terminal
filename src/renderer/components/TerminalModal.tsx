@@ -3,6 +3,10 @@ import { Icon } from './ui/Icon'
 import './TerminalModal.css'
 
 export type TerminalModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
+/** Variante del panel para casos de uso específicos (sin className en props). */
+export type TerminalModalPanelVariant = 'default' | 'theme-picker'
+/** Layout del cuerpo del modal. */
+export type TerminalModalBodyLayout = 'default' | 'spacious' | 'flush'
 
 export interface TerminalModalProps {
   open: boolean
@@ -20,8 +24,8 @@ export interface TerminalModalProps {
   closeOnBackdrop?: boolean
   /** Botón ✕ en la esquina del encabezado (solo si hay `title`) */
   showHeaderClose?: boolean
-  panelClassName?: string
-  bodyClassName?: string
+  panelVariant?: TerminalModalPanelVariant
+  bodyLayout?: TerminalModalBodyLayout
 }
 
 /**
@@ -40,8 +44,8 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
   closeOnEscape = true,
   closeOnBackdrop = false,
   showHeaderClose = true,
-  panelClassName = '',
-  bodyClassName = '',
+  panelVariant = 'default',
+  bodyLayout = 'default',
 }) => {
   useEffect(() => {
     if (!open || !closeOnEscape) return
@@ -60,10 +64,15 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
 
   const hasHeader = title != null && title !== ''
 
+  const bodyClass = [
+    'terminal-modal-body',
+    bodyLayout !== 'default' ? `terminal-modal-body--${bodyLayout}` : '',
+  ].filter(Boolean).join(' ')
+
   return (
     <div
       className="terminal-modal-backdrop"
-      style={{ zIndex }}
+      style={{ '--modal-z': zIndex } as React.CSSProperties}
       role="presentation"
       onClick={closeOnBackdrop ? onClose : undefined}
     >
@@ -71,7 +80,7 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
         className={[
           'terminal-modal-panel',
           `terminal-modal-panel--${size}`,
-          panelClassName,
+          panelVariant !== 'default' ? `terminal-modal-panel--${panelVariant}` : '',
         ].filter(Boolean).join(' ')}
         role="dialog"
         aria-modal="true"
@@ -95,7 +104,7 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
             )}
           </header>
         )}
-        <div className={['terminal-modal-body', bodyClassName].filter(Boolean).join(' ')}>
+        <div className={bodyClass}>
           {children}
         </div>
         {footer != null && footer !== false && (

@@ -41,8 +41,8 @@ export const PaneToolbar: React.FC<PaneToolbarProps> = ({
       )}
       <PaneToolbarButton
         icon="git-branch"
-        title="Git: estado, pull, commit y push en la carpeta de esta terminal"
-        aria-label="Abrir panel Git de esta terminal"
+        title="Git: estado, pull, commit y push en la carpeta de esta terminal (⌘G)"
+        aria-label="Abrir panel Git de esta terminal (⌘G)"
         variant="git"
         onPointerDown={onPointerDown}
         onClick={onOpenGitPanel}

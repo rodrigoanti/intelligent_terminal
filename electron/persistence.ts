@@ -2,6 +2,7 @@ import { join } from 'path'
 import { readFileSync, writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs'
 import { app } from 'electron'
 import type { TabSession } from '../src/renderer/App'
+import type { FileExplorerPersistedState } from '../src/shared/fileExplorerPersistedState'
 
 const USER_DATA = (): string => app.getPath('userData')
 
@@ -18,6 +19,8 @@ export interface PersistedSession {
   cwds: Record<string, string>
   /** Por panel (sessionId / paneId): chat IA expandido; ausente u omitido = colapsado */
   aiExpandedByPane?: Record<string, boolean>
+  /** Por panel: explorador de archivos (abierto, selección, carpetas expandidas). */
+  explorerByPane?: Record<string, FileExplorerPersistedState>
 }
 
 const SESSION_FILE = (): string => join(USER_DATA(), 'session.json')

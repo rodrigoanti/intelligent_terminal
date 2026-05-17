@@ -1,7 +1,7 @@
 import React from 'react'
 import './Button.css'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'icon'
 export type ButtonSize = 'xs' | 'sm' | 'md'
 
 export interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'className'> {

@@ -3,7 +3,6 @@ import type { AppConfig } from '@shared/configSchema'
 import type { GitCommandResult, GitRepoStatus } from '@shared/gitSessionTypes'
 import { suggestGitCommitMessage } from '@ai/ollamaClient'
 import { TerminalModal } from './TerminalModal'
-import { ConfirmTerminalModal } from './ConfirmTerminalModal'
 import { Button } from './ui/Button'
 import { TextArea } from './ui/TextArea'
 import { Spinner } from './ui/Spinner'
@@ -40,7 +39,6 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
   const [busy, setBusy] = useState<string | null>(null)
   const [lastLog, setLastLog] = useState('')
   const [commitMsg, setCommitMsg] = useState('')
-  const [confirmStageOpen, setConfirmStageOpen] = useState(false)
   const [actionsRefreshToken, setActionsRefreshToken] = useState(0)
   const aiAbortRef = useRef<AbortController | null>(null)
 
@@ -118,10 +116,6 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
     })()
   }
 
-  const onConfirmStageAll = (): void => {
-    setConfirmStageOpen(false)
-    void runAndLog('git add -A', () => window.api.gitStageAll(sessionId))
-  }
 
   const onSuggestAi = (): void => {
     aiAbortRef.current?.abort()
@@ -264,7 +258,7 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
                       variant="secondary"
                       size="sm"
                       disabled={!idle}
-                      onClick={() => setConfirmStageOpen(true)}
+                      onClick={() => void runAndLog('git add -A', () => window.api.gitStageAll(sessionId))}
                     >
                       stage all
                     </Button>
@@ -303,14 +297,6 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
         </div>
       </TerminalModal>
 
-      <ConfirmTerminalModal
-        open={confirmStageOpen}
-        zIndex={720}
-        message="¿Hacer «git add -A» en la raíz del repo?"
-        detail="Se añadirán al staging todos los cambios del repositorio (incl. borrados y nuevos archivos)."
-        onCancel={() => setConfirmStageOpen(false)}
-        onConfirm={onConfirmStageAll}
-      />
     </>
   )
 }

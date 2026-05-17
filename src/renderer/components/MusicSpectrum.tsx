@@ -32,7 +32,7 @@ export const MusicSpectrum: React.FC<MusicSpectrumProps> = ({ animating }) => {
         const slow = 0.5 + 0.5 * Math.sin(phase)
         const fast = 0.5 + 0.5 * Math.sin(phase * 2.31 + i * 0.4)
         const v = 0.14 + 0.42 * slow * fast + 0.18 * Math.sin(phase * 0.37 + 2)
-        el.style.transform = `scaleY(${Math.max(0.1, Math.min(1, v))})`
+        el.style.setProperty('--bar-lv', String(Math.max(0.1, Math.min(1, v))))
       }
       rafRef.current = requestAnimationFrame(tick)
     }
@@ -58,7 +58,7 @@ export const MusicSpectrum: React.FC<MusicSpectrumProps> = ({ animating }) => {
           key={i}
           ref={el => { barRefs.current[i] = el }}
           className="titlebar-music-spectrum__bar"
-          style={animating ? undefined : { transform: `scaleY(${lv})` }}
+          style={animating ? undefined : { '--bar-lv': lv } as React.CSSProperties}
         />
       ))}
     </div>

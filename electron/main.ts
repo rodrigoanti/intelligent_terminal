@@ -49,15 +49,33 @@ import {
   gitStageAll,
 } from './gitSessionOps'
 import { githubActionsListForSession } from './githubActionsOps'
-import { getGitStatusMapForExplorer, listDirChildren, loadFileForExplorer } from './fileExplorerOps'
+import {
+  copyPathsForExplorer,
+  pasteIntoExplorer,
+} from './fileExplorerClipboardOps'
+import {
+  createDirForExplorer,
+  createFileForExplorer,
+  deletePathForExplorer,
+  listDirChildren,
+  loadFileForExplorer,
+  renamePathForExplorer,
+  saveFileForExplorer,
+} from './fileExplorerOps'
 import { readCdRecentFolders } from './cdRecentMd'
 import {
+  clearPersistedSessionCwd,
   clearSessionCdState,
   ensureSessionCdState,
   getSessionCwd,
   initSessionCwd,
   recordCdFromUserLine,
 } from './cdRecentCapture'
+import {
+  extractOsc7CwdFromChunk,
+  isExistingDirectory,
+  patchEnvForCwdReporting,
+} from './shellCwdSync'
 import {
   getPlaybackState,
   isSpotifyDesktopInstalled,
@@ -99,7 +117,8 @@ function writeConfig(cfg: AppConfig): void {
 function projectRootForSession(sessionId: string): string {
   const home = app.getPath('home')
   ensureSessionCdState(sessionId, home)
-  return getSessionCwd(sessionId) ?? home
+  const cwd = getSessionCwd(sessionId)?.trim()
+  return cwd || home
 }
 
 interface PtyEntry {
@@ -160,6 +179,39 @@ function resolveSpawnCwd(requested: unknown, home: string): string {
   }
 }
 
+/** Directorio donde se guardan los archivos de hook de shell (ZDOTDIR temp para zsh, etc.). */
+const shellHooksDir = (): string => join(app.getPath('userData'), 'shell-hooks')
+
+function spawnPtyProcess(
+  shellPath: string,
+  shellArgs: string[],
+  cwd: string,
+  home: string,
+): pty.IPty {
+  const baseEnv: Record<string, string> =
+    process.platform === 'win32'
+      ? (process.env as Record<string, string>)
+      : {
+          ...process.env as Record<string, string>,
+          HOME: home,
+          SHELL: shellPath,
+          TERM: 'xterm-256color',
+          TERM_PROGRAM: 'AI Terminal',
+        }
+
+  const env = process.platform === 'win32'
+    ? baseEnv
+    : patchEnvForCwdReporting(baseEnv, shellPath, shellHooksDir())
+
+  const opts = { name: 'xterm-256color' as const, cwd, env }
+  try {
+    return pty.spawn(shellPath, shellArgs, opts)
+  } catch (firstErr) {
+    if (cwd === home) throw firstErr
+    return pty.spawn(shellPath, shellArgs, { ...opts, cwd: home })
+  }
+}
+
 /** PNG en `build/icon.png` (electron-builder). Opcional en dev. */
 function resolveOptionalWindowIcon(): string | undefined {
   const png = join(__dirname, '../../build/icon.png')
@@ -188,8 +240,8 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.CD_RECENT_LIST, (): string[] => readCdRecentFolders())
 
-  ipcMain.on(IPC.CD_RECENT_RECORD_LINE, (_e, sessionId: string, line: string) => {
-    recordCdFromUserLine(sessionId, line, app.getPath('home'))
+  ipcMain.handle(IPC.CD_RECENT_RECORD_LINE, (_e, sessionId: string, line: string) => {
+    return recordCdFromUserLine(sessionId, line, app.getPath('home'))
   })
 
   ipcMain.handle(IPC.GET_SESSION_CWD, (_e, sessionId: string): string => {
@@ -334,9 +386,69 @@ function registerIpc(): void {
     return loadFileForExplorer(projectRootForSession(sessionId), relPath)
   })
 
-  ipcMain.handle(IPC.FILE_EXPLORER_GIT_MAP, (_e, sessionId: string) => {
-    return getGitStatusMapForExplorer(projectRootForSession(sessionId))
+  ipcMain.handle(
+    IPC.FILE_EXPLORER_SAVE_FILE,
+    (_e, sessionId: string, relPath: unknown, content: unknown) => {
+      if (typeof relPath !== 'string' || !relPath.trim()) {
+        return { ok: false, error: 'ruta vacía' }
+      }
+      if (typeof content !== 'string') {
+        return { ok: false, error: 'contenido inválido' }
+      }
+      return saveFileForExplorer(projectRootForSession(sessionId), relPath, content)
+    },
+  )
+
+  ipcMain.handle(IPC.FILE_EXPLORER_CREATE_DIR, (_e, sessionId: string, relPath: unknown) => {
+    if (typeof relPath !== 'string' || !relPath.trim()) {
+      return { ok: false, error: 'ruta vacía' }
+    }
+    return createDirForExplorer(projectRootForSession(sessionId), relPath)
   })
+
+  ipcMain.handle(IPC.FILE_EXPLORER_CREATE_FILE, (_e, sessionId: string, relPath: unknown) => {
+    if (typeof relPath !== 'string' || !relPath.trim()) {
+      return { ok: false, error: 'ruta vacía' }
+    }
+    return createFileForExplorer(projectRootForSession(sessionId), relPath)
+  })
+
+  ipcMain.handle(IPC.FILE_EXPLORER_COPY, (_e, sessionId: string, relPaths: unknown) => {
+    if (!Array.isArray(relPaths)) {
+      return { ok: false, error: 'rutas inválidas' }
+    }
+    const paths = relPaths.filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+    return copyPathsForExplorer(sessionId, projectRootForSession(sessionId), paths)
+  })
+
+  ipcMain.handle(IPC.FILE_EXPLORER_PASTE, (_e, sessionId: string, destRelPath: unknown) => {
+    const dest = typeof destRelPath === 'string' ? destRelPath : ''
+    return pasteIntoExplorer(sessionId, projectRootForSession(sessionId), dest)
+  })
+
+  ipcMain.handle(IPC.FILE_EXPLORER_DELETE, (_e, sessionId: string, relPath: unknown) => {
+    if (typeof relPath !== 'string' || !relPath.trim()) {
+      return { ok: false, error: 'ruta vacía' }
+    }
+    return deletePathForExplorer(projectRootForSession(sessionId), relPath)
+  })
+
+  ipcMain.handle(
+    IPC.FILE_EXPLORER_RENAME,
+    (_e, sessionId: string, oldRelPath: unknown, newRelPath: unknown) => {
+      if (typeof oldRelPath !== 'string' || !oldRelPath.trim()) {
+        return { ok: false, error: 'ruta vacía' }
+      }
+      if (typeof newRelPath !== 'string' || !newRelPath.trim()) {
+        return { ok: false, error: 'nombre inválido' }
+      }
+      return renamePathForExplorer(
+        projectRootForSession(sessionId),
+        oldRelPath,
+        newRelPath,
+      )
+    },
+  )
 
   ipcMain.handle(IPC.SESSION_LOAD, (): PersistedSession | null => loadSession())
 
@@ -393,27 +505,29 @@ function registerIpc(): void {
     const shellArgs = process.platform === 'win32' ? [] : ['-l']
 
     try {
-      const proc = pty.spawn(shellPath, shellArgs, {
-        name: 'xterm-256color',
-        cwd: initialCwd,
-        env:
-          process.platform === 'win32'
-            ? (process.env as NodeJS.ProcessEnv)
-            : ({
-                ...process.env,
-                HOME: home,
-                SHELL: shellPath,
-                TERM: 'xterm-256color',
-                TERM_PROGRAM: 'AI Terminal',
-              } as Record<string, string>),
-      })
+      let spawnCwd = initialCwd
+      let proc: pty.IPty
+      try {
+        proc = spawnPtyProcess(shellPath, shellArgs, spawnCwd, home)
+      } catch (firstErr) {
+        if (spawnCwd === home) throw firstErr
+        spawnCwd = home
+        initSessionCwd(sessionId, home)
+        proc = spawnPtyProcess(shellPath, shellArgs, home, home)
+      }
       const windowId = win.id
       ptySessions.set(sessionId, { proc, windowId })
 
       proc.onData(data => {
+        const oscCwd = extractOsc7CwdFromChunk(data)
+        if (oscCwd && isExistingDirectory(oscCwd)) initSessionCwd(sessionId, oscCwd)
         sendToWindow(windowId, IPC.PTY_DATA, sessionId, data)
       })
       proc.onExit(({ exitCode }) => {
+        // Ignorar salidas de procesos sustituidos por un pty:create posterior (evita PTY_EXIT
+        // espurio → re-spawn en bucle y "posix_spawnp failed." en el renderer).
+        const current = ptySessions.get(sessionId)
+        if (current?.proc !== proc) return
         ptySessions.delete(sessionId)
         // No borrar cwd aquí: el renderer puede llamar a pty:create de nuevo con el mismo
         // sessionId y GET_SESSION_CWD para reenganchar un shell. killPty() sí limpia el cwd.
@@ -442,6 +556,7 @@ function registerIpc(): void {
 
   ipcMain.on(IPC.PTY_KILL, (_e, sessionId: string) => {
     killPty(sessionId)
+    clearPersistedSessionCwd(sessionId)
   })
 }
 

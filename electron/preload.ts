@@ -7,10 +7,47 @@ import type { SpotifyPlaybackState } from './spotifyNative'
 import type { GitCommandResult, GitDiffForAiPayload, GitRepoStatus } from '../src/shared/gitSessionTypes'
 import type { GitHubActionsSnapshot } from '../src/shared/githubActionsTypes'
 import type {
+  FileExplorerClipboardResult,
   FileExplorerFilePayload,
-  FileExplorerGitMapResult,
   FileExplorerListResult,
+  FileExplorerWriteResult,
 } from '../src/shared/fileExplorerTypes'
+
+/** Un listener IPC por canal; evita MaxListenersExceeded con muchos paneles PTY. */
+function createPtyChannelMux<TArgs extends unknown[]>(
+  channel: string,
+): (sessionId: string, cb: (...args: TArgs) => void) => () => void {
+  const subsBySession = new Map<string, Set<(...args: TArgs) => void>>()
+  let installed = false
+
+  const ensureListener = (): void => {
+    if (installed) return
+    installed = true
+    ipcRenderer.on(channel, (_e: Electron.IpcRendererEvent, sessionId: string, ...args: unknown[]) => {
+      const subs = subsBySession.get(sessionId)
+      if (!subs) return
+      for (const cb of subs) cb(...(args as TArgs))
+    })
+  }
+
+  return (sessionId: string, cb: (...args: TArgs) => void) => {
+    ensureListener()
+    let subs = subsBySession.get(sessionId)
+    if (!subs) {
+      subs = new Set()
+      subsBySession.set(sessionId, subs)
+    }
+    subs.add(cb)
+    return () => {
+      subs!.delete(cb)
+      if (subs!.size === 0) subsBySession.delete(sessionId)
+    }
+  }
+}
+
+const subscribePtyData = createPtyChannelMux<[data: string]>(IPC.PTY_DATA)
+const subscribePtyExit = createPtyChannelMux<[code: number]>(IPC.PTY_EXIT)
+const subscribePtyError = createPtyChannelMux<[message: string]>(IPC.PTY_ERROR)
 
 const api = {
   // ─── PTY ───────────────────────────────────────────────────────────────────
@@ -27,25 +64,13 @@ const api = {
     ipcRenderer.send(IPC.PTY_KILL, sessionId)
   },
   onPtyData(sessionId: string, cb: (data: string) => void): () => void {
-    const listener = (_: Electron.IpcRendererEvent, sid: string, data: string): void => {
-      if (sid === sessionId) cb(data)
-    }
-    ipcRenderer.on(IPC.PTY_DATA, listener)
-    return () => ipcRenderer.removeListener(IPC.PTY_DATA, listener)
+    return subscribePtyData(sessionId, cb)
   },
   onPtyExit(sessionId: string, cb: (code: number) => void): () => void {
-    const listener = (_: Electron.IpcRendererEvent, sid: string, code: number): void => {
-      if (sid === sessionId) cb(code)
-    }
-    ipcRenderer.on(IPC.PTY_EXIT, listener)
-    return () => ipcRenderer.removeListener(IPC.PTY_EXIT, listener)
+    return subscribePtyExit(sessionId, cb)
   },
   onPtyError(sessionId: string, cb: (message: string) => void): () => void {
-    const listener = (_: Electron.IpcRendererEvent, sid: string, message: string): void => {
-      if (sid === sessionId) cb(message)
-    }
-    ipcRenderer.on(IPC.PTY_ERROR, listener)
-    return () => ipcRenderer.removeListener(IPC.PTY_ERROR, listener)
+    return subscribePtyError(sessionId, cb)
   },
 
   onShortcutCloseTab(cb: () => void): () => void {
@@ -71,8 +96,8 @@ const api = {
     return ipcRenderer.invoke(IPC.CD_RECENT_LIST)
   },
 
-  recordCdLine(sessionId: string, line: string): void {
-    ipcRenderer.send(IPC.CD_RECENT_RECORD_LINE, sessionId, line)
+  recordCdLine(sessionId: string, line: string): Promise<string | null> {
+    return ipcRenderer.invoke(IPC.CD_RECENT_RECORD_LINE, sessionId, line)
   },
 
   getSessionCwd(sessionId: string): Promise<string> {
@@ -193,8 +218,40 @@ const api = {
     return ipcRenderer.invoke(IPC.FILE_EXPLORER_LOAD_FILE, sessionId, relPath)
   },
 
-  fileExplorerGitMap(sessionId: string): Promise<FileExplorerGitMapResult> {
-    return ipcRenderer.invoke(IPC.FILE_EXPLORER_GIT_MAP, sessionId)
+  fileExplorerSaveFile(
+    sessionId: string,
+    relPath: string,
+    content: string,
+  ): Promise<FileExplorerWriteResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_SAVE_FILE, sessionId, relPath, content)
+  },
+
+  fileExplorerCreateDir(sessionId: string, relPath: string): Promise<FileExplorerWriteResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_CREATE_DIR, sessionId, relPath)
+  },
+
+  fileExplorerCreateFile(sessionId: string, relPath: string): Promise<FileExplorerWriteResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_CREATE_FILE, sessionId, relPath)
+  },
+
+  fileExplorerCopy(sessionId: string, relPaths: string[]): Promise<FileExplorerClipboardResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_COPY, sessionId, relPaths)
+  },
+
+  fileExplorerPaste(sessionId: string, destRelPath: string): Promise<FileExplorerClipboardResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_PASTE, sessionId, destRelPath)
+  },
+
+  fileExplorerDelete(sessionId: string, relPath: string): Promise<FileExplorerWriteResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_DELETE, sessionId, relPath)
+  },
+
+  fileExplorerRename(
+    sessionId: string,
+    oldRelPath: string,
+    newRelPath: string,
+  ): Promise<FileExplorerWriteResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_RENAME, sessionId, oldRelPath, newRelPath)
   },
 
   // ─── Persistencia ────────────────────────────────────────────────────────

@@ -63,10 +63,22 @@ export const IPC = {
 
   /** Renderer → main (invoke): listar hijos de un directorio relativo al cwd de la sesión */
   FILE_EXPLORER_LIST_DIR: 'fileExplorer:listDir',
-  /** Renderer → main (invoke): leer archivo + diff git para el explorador */
+  /** Renderer → main (invoke): leer archivo para el explorador */
   FILE_EXPLORER_LOAD_FILE: 'fileExplorer:loadFile',
-  /** Renderer → main (invoke): mapa de estados git para colorear el árbol */
-  FILE_EXPLORER_GIT_MAP: 'fileExplorer:gitMap',
+  /** Renderer → main (invoke): guardar archivo relativo al cwd de la sesión */
+  FILE_EXPLORER_SAVE_FILE: 'fileExplorer:saveFile',
+  /** Renderer → main (invoke): crear carpeta relativa al cwd de la sesión */
+  FILE_EXPLORER_CREATE_DIR: 'fileExplorer:createDir',
+  /** Renderer → main (invoke): crear archivo vacío (falla si ya existe) */
+  FILE_EXPLORER_CREATE_FILE: 'fileExplorer:createFile',
+  /** Renderer → main (invoke): copiar rutas al portapapeles */
+  FILE_EXPLORER_COPY: 'fileExplorer:copy',
+  /** Renderer → main (invoke): pegar desde portapapeles en una carpeta */
+  FILE_EXPLORER_PASTE: 'fileExplorer:paste',
+  /** Renderer → main (invoke): eliminar archivo o carpeta */
+  FILE_EXPLORER_DELETE: 'fileExplorer:delete',
+  /** Renderer → main (invoke): renombrar archivo o carpeta */
+  FILE_EXPLORER_RENAME: 'fileExplorer:rename',
 
   // ─── Persistencia de sesión ────────────────────────────────────────────────
   /** Renderer → main: guardar layout de pestañas + cwds */
