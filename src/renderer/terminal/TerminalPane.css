@@ -101,6 +101,22 @@
   flex-shrink: 0;
 }
 
+.pane-toolbar__folder-label {
+  flex: 1;
+  min-width: 0;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--text-muted) 90%, var(--text));
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  pointer-events: none;
+}
+
 .pane-toolbar-reorder-handle {
   cursor: grab;
   flex-shrink: 0;

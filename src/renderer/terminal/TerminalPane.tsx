@@ -24,6 +24,7 @@ import { CmdSuggest } from './CmdSuggest'
 import { TerminalScrollDown } from './TerminalScrollDown'
 import { SplitPaneButton } from './SplitPaneButton'
 import { FileExplorerSidebar, type FileExplorerSidebarHandle } from './explorer/FileExplorerSidebar'
+import { normalizeSessionCwd, sessionCwdPaneLabel } from './explorer/explorerPathUtils'
 import type { FileExplorerPersistedState } from '@shared/fileExplorerPersistedState'
 import '@xterm/xterm/css/xterm.css'
 import './TerminalPane.css'
@@ -416,6 +417,7 @@ export const TerminalPane: React.FC<Props> = ({
     })
   }, [hasClosePaneAction])
 
+  const [paneCwd, setPaneCwd] = useState(() => initialPtyCwd?.trim() ?? '')
   const [gitPanelOpen, setGitPanelOpen] = useState(false)
   const [findModalOpen, setFindModalOpen] = useState(false)
   const [findModalBuffer, setFindModalBuffer] = useState<TerminalBufferFindMatch[]>([])
@@ -498,6 +500,21 @@ export const TerminalPane: React.FC<Props> = ({
       const cwd = await window.api.getSessionCwd(sessionId)
       if (cwd) window.api.openFolder(cwd)
     } catch { /* ignore */ }
+  }, [sessionId])
+
+  useEffect(() => {
+    let cancelled = false
+    const syncPaneCwd = async (): Promise<void> => {
+      const cwd = normalizeSessionCwd(await window.api.getSessionCwd(sessionId))
+      if (!cwd || cancelled) return
+      setPaneCwd(prev => (prev === cwd ? prev : cwd))
+    }
+    void syncPaneCwd()
+    const id = window.setInterval(() => { void syncPaneCwd() }, 1500)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
   }, [sessionId])
 
   /** Reserva espacio bajo el xterm cuando el dock IA está colapsado (overlay absolute). */
@@ -805,7 +822,9 @@ export const TerminalPane: React.FC<Props> = ({
           continue
         }
         void window.api.recordCdLine(sessionId, line).then(newCwd => {
-          if (newCwd) onPaneCwdChangedRef.current?.(sessionId, newCwd)
+          if (!newCwd) return
+          setPaneCwd(newCwd)
+          onPaneCwdChangedRef.current?.(sessionId, newCwd)
         })
         if (!/^\s*(?:builtin\s+|command\s+)?cd(\s|$)/i.test(line.trim())) {
           setRecentCommands(prev => pushRecentUnique(prev, line, MAX_RECENT_COMMANDS))
@@ -1197,6 +1216,8 @@ export const TerminalPane: React.FC<Props> = ({
             queueMicrotask(() => { termRef.current?.focus() })
           }}
           explorerOpen={explorerOpen}
+          folderLabel={sessionCwdPaneLabel(paneCwd)}
+          folderTitle={paneCwd ? `Carpeta actual: ${paneCwd}` : 'Carpeta actual'}
           onToggleExplorer={toggleExplorer}
           onOpenFolderInFinder={() => {
             onRequestPaneFocusRef.current?.()

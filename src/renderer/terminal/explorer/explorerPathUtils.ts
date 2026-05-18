@@ -9,6 +9,16 @@ export function normalizeSessionCwd(cwd: string | null | undefined): string {
   return cwd.trim().replace(/\\/g, '/').replace(/\/+$/, '') || ''
 }
 
+/** Etiqueta corta para la barra del panel: últimos N segmentos (`padre / actual`). */
+export function sessionCwdPaneLabel(cwd: string | null | undefined, levels = 2): string {
+  const norm = normalizeSessionCwd(cwd)
+  if (!norm) return '—'
+  const parts = norm.split('/').filter(Boolean)
+  if (parts.length === 0) return '—'
+  if (parts.length === 1) return parts[0]!
+  return parts.slice(-levels).join(' / ')
+}
+
 export interface ExplorerSelectedEntry {
   relPath: string
   isDirectory: boolean

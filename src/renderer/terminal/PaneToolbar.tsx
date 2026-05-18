@@ -8,6 +8,10 @@ export interface PaneToolbarProps {
   isGrabbed: boolean
   showClosePane: boolean
   explorerOpen: boolean
+  /** Nombre de la carpeta actual (basename del cwd). */
+  folderLabel: string
+  /** Ruta completa para tooltip. */
+  folderTitle: string
   onDragHandleStart: (e: DragEvent) => void
   onDragHandleEnd: () => void
   onClosePane: () => void
@@ -27,6 +31,8 @@ export const PaneToolbar: React.FC<PaneToolbarProps> = ({
   onOpenGitPanel,
   onToggleExplorer,
   explorerOpen,
+  folderLabel,
+  folderTitle,
   onOpenFolderInFinder,
   onPointerDown,
 }) => (
@@ -65,6 +71,13 @@ export const PaneToolbar: React.FC<PaneToolbarProps> = ({
         onClick={onOpenFolderInFinder}
       />
     </div>
+    <span
+      className="pane-toolbar__folder-label"
+      title={folderTitle}
+      aria-label={`Carpeta actual: ${folderLabel}`}
+    >
+      {folderLabel}
+    </span>
     {showClosePane && (
       <div className="pane-toolbar__group pane-toolbar__group--end">
         <PaneToolbarButton
