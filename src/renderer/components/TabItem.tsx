@@ -1,5 +1,6 @@
 import React, { useCallback, useRef } from 'react'
 import type { TabSession } from '../App'
+import { useT } from '@i18n/useT'
 import { Icon } from './ui/Icon'
 import { Spinner } from './ui/Spinner'
 
@@ -49,6 +50,8 @@ export const TabItem: React.FC<TabItemProps> = ({
   onDragLeave,
   skipBlurCommitRef,
 }) => {
+  const { t } = useT()
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (isActive && (e.key === 'Enter' || e.key === ' ')) {
       if (!isEditing) {
@@ -75,7 +78,7 @@ export const TabItem: React.FC<TabItemProps> = ({
       title={isEditing ? undefined : tab.title}
     >
       {isBusy ? (
-        <Spinner aria-label="Ejecutando" />
+        <Spinner aria-label={t('tabs.spinnerAriaLabel')} />
       ) : (
         <span className="tab-icon" aria-hidden="true">
           <Icon name="terminal" size={10} />
@@ -87,7 +90,7 @@ export const TabItem: React.FC<TabItemProps> = ({
           ref={editInputRef}
           className="tab-title tab-title-input"
           value={editDraft}
-          aria-label="Nombre de la pestaña"
+          aria-label={t('tabs.tabNameAriaLabel')}
           onChange={e => onEditDraftChange(e.target.value)}
           onBlur={() => {
             if (skipBlurCommitRef.current) {
@@ -112,33 +115,34 @@ export const TabItem: React.FC<TabItemProps> = ({
           tabIndex={isActive ? 0 : undefined}
           onClick={isActive ? onStartEdit : undefined}
           onKeyDown={isActive ? handleKeyDown : undefined}
-          title={isActive ? 'Clic para renombrar' : undefined}
+          title={isActive ? t('tabs.tabClickRename') : undefined}
         >
           {tab.title}
         </span>
       )}
 
       {!isEditing && (
-        <span className="tab-number" aria-label={`Pestaña ${tabNumber}`}>
+        <span className="tab-number" aria-label={t('tabs.tabAriaLabel', { n: tabNumber })}>
           {tabNumber}
         </span>
       )}
 
-      <TabCloseButton onClose={onClose} />
+      <TabCloseButton title={t('tabs.closeTabTitle')} onClose={onClose} />
     </div>
   )
 }
 
 interface TabCloseButtonProps {
+  title: string
   onClose: () => void
 }
 
-const TabCloseButton: React.FC<TabCloseButtonProps> = ({ onClose }) => (
+const TabCloseButton: React.FC<TabCloseButtonProps> = ({ title, onClose }) => (
   <span
     className="tab-close"
     role="button"
     onClick={e => { e.stopPropagation(); onClose() }}
-    title="Cerrar pestaña"
+    title={title}
   >
     <Icon name="close" size={10} />
   </span>

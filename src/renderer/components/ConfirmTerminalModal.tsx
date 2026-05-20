@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect } from 'react'
+import { useT } from '@i18n/useT'
 import { TerminalModal } from './TerminalModal'
 import { Button } from './ui/Button'
 import './ConfirmTerminalModal.css'
@@ -15,6 +16,7 @@ interface Props {
 export const ConfirmTerminalModal: React.FC<Props> = ({
   open, message, detail, zIndex = 600, onConfirm, onCancel,
 }) => {
+  const { t } = useT()
   const confirm = useCallback(() => { onConfirm() }, [onConfirm])
 
   useEffect(() => {
@@ -37,10 +39,10 @@ export const ConfirmTerminalModal: React.FC<Props> = ({
       footer={
         <div className="confirm-terminal-actions">
           <Button variant="secondary" size="sm" onClick={onCancel}>
-            esc no
+            {t('ui.confirmNo')}
           </Button>
           <Button variant="primary" size="sm" onClick={confirm} autoFocus>
-            [enter] OK
+            {t('ui.confirmOk')}
           </Button>
         </div>
       }

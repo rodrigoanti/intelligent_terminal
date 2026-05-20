@@ -1,4 +1,5 @@
 import React, { useId } from 'react'
+import { useT } from '@i18n/useT'
 import { Input } from './ui/Input'
 
 interface AiInputAreaProps {
@@ -20,6 +21,7 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
   onKeyDown,
   inputRef,
 }) => {
+  const { t } = useT()
   const inputId = useId()
 
   return (
@@ -34,7 +36,7 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
           value={value}
           onChange={e => onChange(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Mensaje al modelo…"
+          placeholder={t('ai.inputPlaceholder')}
           autoComplete="off"
           spellCheck={false}
           enterKeyHint="send"
@@ -44,7 +46,7 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
       <div className="ai-input-actions">
         {loading ? (
           <button type="button" className="ai-send-btn ai-stop-btn" onClick={onStop}>
-            Detener
+            {t('ai.stop')}
           </button>
         ) : (
           <button
@@ -53,7 +55,7 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
             onClick={onSend}
             disabled={!value.trim()}
           >
-            Enviar
+            {t('ai.send')}
           </button>
         )}
       </div>

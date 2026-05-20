@@ -1,6 +1,7 @@
 import React from 'react'
 import type { AppConfig } from '@shared/configSchema'
 import { getTheme } from '@themes/presets'
+import { useT } from '@i18n/useT'
 import { TitlebarMusicControls } from './TitlebarMusicControls'
 import { FontSizeControl } from './FontSizeControl'
 import { ThemePickerTrigger } from './ThemePickerTrigger'
@@ -31,6 +32,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
   onOpenThemePicker,
   onOpenSettings,
 }) => {
+  const { t } = useT()
   const theme = getTheme(config.themeId)
 
   return (
@@ -58,8 +60,8 @@ export const Titlebar: React.FC<TitlebarProps> = ({
           variant="icon"
           tabIndex={-1}
           onClick={onOpenSettings}
-          title="Ajustes"
-          aria-label="Ajustes"
+          title={t('titlebar.settingsTitle')}
+          aria-label={t('titlebar.settingsAriaLabel')}
         >
           <Icon name="settings" size={15} />
         </Button>

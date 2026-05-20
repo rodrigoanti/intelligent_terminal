@@ -1,5 +1,6 @@
 import React from 'react'
 import { Icon } from '../components/ui/Icon'
+import { useT } from '@i18n/useT'
 
 interface CdSuggestProps {
   visibleLocalDirs: string[]
@@ -13,36 +14,39 @@ export const CdSuggest: React.FC<CdSuggestProps> = ({
   visiblePaths,
   onPickLocal,
   onPickRecent,
-}) => (
-  <div className="cd-suggest" role="listbox" aria-label="Sugerencias de directorio">
-    {visibleLocalDirs.length > 0 && (
-      <>
-        <div className="cd-suggest-section-title">ubicación actual</div>
-        {visibleLocalDirs.map(d => (
-          <CdSuggestItem
-            key={`local:${d}`}
-            path={d}
-            variant="local"
-            onPick={() => onPickLocal(d)}
-          />
-        ))}
-      </>
-    )}
-    {visiblePaths.length > 0 && (
-      <>
-        <div className="cd-suggest-section-title">ubicaciones recientes</div>
-        {visiblePaths.map(p => (
-          <CdSuggestItem
-            key={`recent:${p}`}
-            path={p}
-            variant="recent"
-            onPick={() => onPickRecent(p)}
-          />
-        ))}
-      </>
-    )}
-  </div>
-)
+}) => {
+  const { t } = useT()
+  return (
+    <div className="cd-suggest" role="listbox" aria-label={t('cdSuggest.ariaLabel')}>
+      {visibleLocalDirs.length > 0 && (
+        <>
+          <div className="cd-suggest-section-title">{t('cdSuggest.currentLocation')}</div>
+          {visibleLocalDirs.map(d => (
+            <CdSuggestItem
+              key={`local:${d}`}
+              path={d}
+              variant="local"
+              onPick={() => onPickLocal(d)}
+            />
+          ))}
+        </>
+      )}
+      {visiblePaths.length > 0 && (
+        <>
+          <div className="cd-suggest-section-title">{t('cdSuggest.recentLocations')}</div>
+          {visiblePaths.map(p => (
+            <CdSuggestItem
+              key={`recent:${p}`}
+              path={p}
+              variant="recent"
+              onPick={() => onPickRecent(p)}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
 
 interface CdSuggestItemProps {
   path: string

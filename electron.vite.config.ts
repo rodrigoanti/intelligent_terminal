@@ -41,7 +41,8 @@ export default defineConfig({
         '@renderer': resolve('src/renderer'),
         '@shared': resolve('src/shared'),
         '@themes': resolve('src/themes'),
-        '@ai': resolve('src/ai')
+        '@ai': resolve('src/ai'),
+        '@i18n': resolve('src/i18n')
       }
     },
     plugins: [react()]

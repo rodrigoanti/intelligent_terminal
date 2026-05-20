@@ -1,5 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type { TabSession } from '../App'
+import { useT } from '@i18n/useT'
 import { ConfirmTerminalModal } from './ConfirmTerminalModal'
 import { TabItem } from './TabItem'
 import { TabAddButton } from './TabAddButton'
@@ -24,6 +25,7 @@ export interface TabBarHandle {
 export const TabBar = forwardRef<TabBarHandle, Props>(function TabBar({
   tabs, activeTabId, onSelect, onAdd, onClose, onRename, onReorder, busyTabIds,
 }, ref) {
+  const { t } = useT()
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
@@ -118,8 +120,8 @@ export const TabBar = forwardRef<TabBarHandle, Props>(function TabBar({
 
       <ConfirmTerminalModal
         open={closeTabConfirm !== null}
-        message={closeTabConfirm ? `¿Cerrar pestaña «${closeTabConfirm.title}»?` : ''}
-        detail="Se cerrarán todos los paneles de esta pestaña y sus sesiones."
+        message={closeTabConfirm ? t('tabs.confirmCloseMessage', { title: closeTabConfirm.title }) : ''}
+        detail={t('tabs.confirmCloseDetail')}
         onConfirm={() => {
           if (closeTabConfirm) onClose(closeTabConfirm.id)
           setCloseTabConfirm(null)

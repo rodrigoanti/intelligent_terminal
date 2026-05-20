@@ -3,6 +3,8 @@ import type { DragEvent } from 'react'
 import { applyTheme, getTheme, normalizeThemeId } from '@themes/presets'
 import type { AppConfig } from '@shared/configSchema'
 import { CONFIG_DEFAULTS } from '@shared/configSchema'
+import { i18next } from '@i18n/index'
+import { useT } from '@i18n/useT'
 import {
   DEFAULT_FILE_EXPLORER_STATE,
   normalizeFileExplorerState,
@@ -65,18 +67,18 @@ function capTabsPaneCount(tabs: TabSession[], maxPanes: number): { tabs: TabSess
 type SessionReady = { loaded: boolean }
 
 let tabCounter = 0
-function newTab(): TabSession {
-  tabCounter++
+function newTab(title: string): TabSession {
   const paneId = crypto.randomUUID()
   return {
     id: crypto.randomUUID(),
-    title: `Shell ${tabCounter}`,
+    title,
     paneIds: [paneId],
     activePaneId: paneId,
   }
 }
 
 export const App: React.FC = () => {
+  const { t } = useT()
   const [tabs, setTabs] = useState<TabSession[]>([])
   const [activeTabId, setActiveTabId] = useState<string>('')
   const [config, setConfig] = useState<AppConfig>(CONFIG_DEFAULTS)
@@ -197,10 +199,15 @@ export const App: React.FC = () => {
     applyTheme(getTheme(config.themeId))
   }, [configReady, config.themeId])
 
+  useEffect(() => {
+    if (!configReady) return
+    void i18next.changeLanguage(config.language ?? 'en')
+  }, [configReady, config.language])
+
   // Load persisted session on mount
   useEffect(() => {
     window.api.loadSession().then(saved => {
-      if (saved && saved.tabs.length > 0) {
+      if (saved?.tabs && saved.tabs.length > 0) {
         const { tabs: cappedTabs, orphanPaneIds } = capTabsPaneCount(saved.tabs, MAX_PANES_PER_TAB)
         const keptPaneIds = new Set(cappedTabs.flatMap(t => t.paneIds))
         for (const pid of orphanPaneIds) {
@@ -242,15 +249,15 @@ export const App: React.FC = () => {
         setTabs(cappedTabs)
         setActiveTabId(saved.activeTabId)
       } else {
-        const t = newTab()
-        setTabs([t])
-        setActiveTabId(t.id)
+        const tab = newTab(t('tabs.defaultTitle', { n: ++tabCounter }))
+        setTabs([tab])
+        setActiveTabId(tab.id)
       }
       setSessionReady({ loaded: true })
     }).catch(() => {
-      const t = newTab()
-      setTabs([t])
-      setActiveTabId(t.id)
+      const tab = newTab(t('tabs.defaultTitle', { n: ++tabCounter }))
+      setTabs([tab])
+      setActiveTabId(tab.id)
       setSessionReady({ loaded: true })
     })
   }, [])
@@ -336,10 +343,10 @@ export const App: React.FC = () => {
   )
 
   const handleAddTab = useCallback(() => {
-    const tab = newTab()
+    const tab = newTab(t('tabs.defaultTitle', { n: ++tabCounter }))
     setTabs(prev => [...prev, tab])
     setActiveTabId(tab.id)
-  }, [])
+  }, [t])
 
   /** ⌘W: mismo modal que la cruz del panel (TerminalPane registra `openConfirm` por paneId). */
   const paneShortcutCloseInterceptors = useRef(new Map<string, () => void>())
@@ -387,9 +394,9 @@ export const App: React.FC = () => {
       }, 0)
     }
     setTabs(prev => {
-      const next = prev.filter(t => t.id !== tabId)
+      const next = prev.filter(tab => tab.id !== tabId)
       if (next.length === 0) {
-        const fresh = newTab()
+        const fresh = newTab(t('tabs.defaultTitle', { n: ++tabCounter }))
         setActiveTabId(fresh.id)
         return [fresh]
       }
@@ -398,7 +405,7 @@ export const App: React.FC = () => {
       }
       return next
     })
-  }, [activeTabId])
+  }, [activeTabId, t])
 
   const handleClosePane = useCallback((tabId: string, paneId: string) => {
     const t = tabsRef.current.find(x => x.id === tabId)

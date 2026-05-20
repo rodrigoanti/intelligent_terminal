@@ -1,4 +1,5 @@
 import React from 'react'
+import { useT } from '@i18n/useT'
 import { AiCodeBlock } from './AiCodeBlock'
 import { AiThinkingBlock } from './AiThinkingBlock'
 
@@ -98,10 +99,12 @@ interface AiMessageProps {
   onInsert: (cmd: string) => void
 }
 
-export const AiMessage: React.FC<AiMessageProps> = ({ message, onInsert }) => (
+export const AiMessage: React.FC<AiMessageProps> = ({ message, onInsert }) => {
+  const { t } = useT()
+  return (
   <div
     className={`ai-msg ai-msg--${message.role}`}
-    aria-label={message.role === 'user' ? 'Tu mensaje' : 'Respuesta del modelo'}
+    aria-label={message.role === 'user' ? t('ai.userAriaLabel') : t('ai.assistantAriaLabel')}
   >
     <div className="ai-msg-bubble">
       <div className="ai-msg-content">
@@ -119,4 +122,5 @@ export const AiMessage: React.FC<AiMessageProps> = ({ message, onInsert }) => (
       </div>
     </div>
   </div>
-)
+  )
+}

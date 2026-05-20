@@ -19,6 +19,19 @@ import {
   type TerminalBufferFindMatch,
 } from '@renderer/terminal/terminalFindInBuffer'
 import { PaneToolbar } from './PaneToolbar'
+import {
+  clearFollowDetached,
+  followTerminalOutput,
+  type TerminalFollowState,
+  updateFollowDetachedState,
+  writePtyDataWithFollowScroll,
+  FOLLOW_SLACK_LINES,
+} from './terminalFollowScroll'
+import {
+  handleForwardedTerminalWheel,
+  isTerminalScrolledUp,
+  repairTerminalViewportAfterWheel,
+} from './terminalWheelScroll'
 import { CdSuggest } from './CdSuggest'
 import { CmdSuggest } from './CmdSuggest'
 import { TerminalScrollDown } from './TerminalScrollDown'
@@ -206,7 +219,11 @@ function filterExecutedRecentsByDraft(recent: string[], draft: string, limit: nu
  * abajo del todo (prompt), se mantiene abajo; si había subido en el historial,
  * se conserva la misma línea superior del viewport.
  */
-function fitTerminalPreserveScroll(term: Terminal, fit: FitAddon): void {
+function fitTerminalPreserveScroll(
+  term: Terminal,
+  fit: FitAddon,
+  followState?: TerminalFollowState,
+): void {
   try {
     const buf = term.buffer.active
     if (buf.type !== 'normal') {
@@ -214,48 +231,20 @@ function fitTerminalPreserveScroll(term: Terminal, fit: FitAddon): void {
       return
     }
     const savedTop = buf.viewportY
-    const wasAtBottom = savedTop >= buf.baseY
+    const wasAtBottom = savedTop >= buf.baseY - FOLLOW_SLACK_LINES
     fit.fit()
     const b = term.buffer.active
     if (b.type !== 'normal') return
     if (wasAtBottom) {
-      term.scrollToBottom()
+      followTerminalOutput(term)
+      if (followState) clearFollowDetached(followState)
       return
     }
     const target = Math.min(Math.max(0, savedTop), Math.max(0, b.baseY))
     term.scrollToLine(target)
+    if (followState) updateFollowDetachedState(term, followState)
   } catch {
     /* syncScrollArea / dimensions */
-  }
-}
-
-/**
- * Escribe salida del PTY y, si el usuario iba pegado al fondo sin selección,
- * fuerza el scroll al final usando el callback de term.write() en lugar de rAF.
- */
-function writePtyDataWithFollowScroll(term: Terminal, data: string, afterParsed?: () => void): void {
-  try {
-    const buf = term.buffer.active
-    const wasFollowing =
-      buf.type === 'normal' &&
-      buf.viewportY >= buf.baseY &&
-      term.getSelection().length === 0
-    term.write(data, () => {
-      try {
-        if (wasFollowing && term.buffer.active.type === 'normal') {
-          term.scrollToBottom()
-        }
-      } catch {
-        /* xterm puede estar disposed o sin dimensions (Viewport.syncScrollArea) */
-      }
-      try {
-        afterParsed?.()
-      } catch {
-        /* ignore */
-      }
-    })
-  } catch {
-    /* buffer / write inválido (dispose en curso) */
   }
 }
 
@@ -362,6 +351,7 @@ export const TerminalPane: React.FC<Props> = ({
   const userLineDraftRef = useRef('')
   const absorbUserInputRef = useRef<(raw: string) => void>(() => {})
   const ptyInjectRef = useRef<(raw: string) => void>(() => {})
+  const followStateRef = useRef<TerminalFollowState>({ userDetached: false })
   const scrollbackSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const busySilenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isBusyRef = useRef(false)
@@ -656,6 +646,7 @@ export const TerminalPane: React.FC<Props> = ({
     let termAlive = true
 
     userLineDraftRef.current = ''
+    followStateRef.current.userDetached = false
 
     // Use configRef.current to get the LATEST config at mount time (avoids
     // creating the terminal with CONFIG_DEFAULTS before getConfig() resolves)
@@ -705,7 +696,7 @@ export const TerminalPane: React.FC<Props> = ({
       })
       return false
     })
-    fitTerminalPreserveScroll(term, fit)
+    fitTerminalPreserveScroll(term, fit, followStateRef.current)
 
     termRef.current = term
     fitRef.current = fit
@@ -737,13 +728,40 @@ export const TerminalPane: React.FC<Props> = ({
       })
     }
 
-    const dScroll = term.onScroll(() => { updateTerminalScrollDown() })
+    const dScroll = term.onScroll(() => {
+      updateFollowDetachedState(term, followStateRef.current)
+      updateTerminalScrollDown()
+    })
     const dWrite = term.onWriteParsed(() => { updateTerminalScrollDown() })
     const dResize = term.onResize(() => { updateTerminalScrollDown() })
     queueMicrotask(() => { updateTerminalScrollDown() })
 
     const viewportEl = containerRef.current?.querySelector('.xterm-viewport') as HTMLElement | null
-    viewportEl?.addEventListener('scroll', scheduleScrollDownIndicator, { passive: true })
+    const onViewportScroll = (): void => {
+      updateFollowDetachedState(term, followStateRef.current)
+      scheduleScrollDownIndicator()
+    }
+    viewportEl?.addEventListener('scroll', onViewportScroll, { passive: true })
+
+    const xtermEl = containerRef.current?.querySelector('.xterm') as HTMLElement | null
+    const onXtermWheelAfter = (ev: WheelEvent): void => {
+      if (!termAlive || termRef.current !== term) return
+      queueMicrotask(() => {
+        if (!termAlive || termRef.current !== term) return
+        if (ev.deltaY > 0 && isTerminalScrolledUp(term)) {
+          repairTerminalViewportAfterWheel(term, ev)
+        }
+        scheduleScrollDownIndicator()
+      })
+    }
+    xtermEl?.addEventListener('wheel', onXtermWheelAfter, { passive: true })
+
+    const onPaneWheelCapture = (ev: WheelEvent): void => {
+      if (!termAlive || termRef.current !== term) return
+      handleForwardedTerminalWheel(term, ev, scheduleScrollDownIndicator)
+    }
+    const paneRoot = paneRootRef.current
+    paneRoot?.addEventListener('wheel', onPaneWheelCapture, { passive: false, capture: true })
 
     /** Evita refresh() sobre terminal disposed / distinta instancia (StrictMode, cambio de pestaña). */
     let repaintRaf = 0
@@ -765,7 +783,10 @@ export const TerminalPane: React.FC<Props> = ({
       if (!termAlive || !saved) return
       term.write(saved, () => {
         if (!termAlive) return
+        clearFollowDetached(followStateRef.current)
+        followTerminalOutput(term)
         scheduleTerminalCanvasRepaint()
+        updateTerminalScrollDown()
       })
     })
 
@@ -784,6 +805,7 @@ export const TerminalPane: React.FC<Props> = ({
       if (!termAlive || termRef.current !== term) return
       try {
         term.clear()
+        clearFollowDetached(followStateRef.current)
         scheduleTerminalCanvasRepaint()
         updateTerminalScrollDown()
         if (scrollbackSaveTimerRef.current) {
@@ -892,7 +914,7 @@ export const TerminalPane: React.FC<Props> = ({
     const resizeObs = new ResizeObserver(() => {
       if (!termAlive || termRef.current !== term) return
       try {
-        fitTerminalPreserveScroll(term, fit)
+        fitTerminalPreserveScroll(term, fit, followStateRef.current)
         const cols = Math.max(1, term.cols)
         const rows = Math.max(1, term.rows)
         window.api.ptyResize(sessionId, cols, rows)
@@ -907,7 +929,7 @@ export const TerminalPane: React.FC<Props> = ({
     let lastPtyErrorAt = 0
     const unsubData = window.api.onPtyData(sessionId, data => {
       if (!termAlive || termRef.current !== term) return
-      writePtyDataWithFollowScroll(term, data, scheduleTerminalCanvasRepaint)
+      writePtyDataWithFollowScroll(term, data, followStateRef.current, scheduleTerminalCanvasRepaint)
       scheduleScrollbackSave()
       // Mientras haya salida del PTY, el proceso sigue activo: resetear el timer de silencio
       if (isBusyRef.current) {
@@ -926,6 +948,7 @@ export const TerminalPane: React.FC<Props> = ({
       writePtyDataWithFollowScroll(
         term,
         `\r\n\x1b[2m[proceso terminado — código ${code}]\x1b[0m\r\n`,
+        followStateRef.current,
         scheduleTerminalCanvasRepaint,
       )
       // Sin proceso, ptyWrite no hace nada → no hay eco en xterm; el onData del renderer
@@ -939,7 +962,7 @@ export const TerminalPane: React.FC<Props> = ({
             if (!host?.isConnected) return
             try {
               window.api.ptyCreate(sessionId, dir || undefined)
-              fitTerminalPreserveScroll(term, fit)
+              fitTerminalPreserveScroll(term, fit, followStateRef.current)
               const cols = Math.max(1, term.cols)
               const rows = Math.max(1, term.rows)
               window.api.ptyResize(sessionId, cols, rows)
@@ -957,6 +980,7 @@ export const TerminalPane: React.FC<Props> = ({
       writePtyDataWithFollowScroll(
         term,
         `\r\n\x1b[31m${message}\x1b[0m\r\n`,
+        followStateRef.current,
         scheduleTerminalCanvasRepaint,
       )
     })
@@ -972,7 +996,9 @@ export const TerminalPane: React.FC<Props> = ({
         cancelAnimationFrame(scrollIndicatorRaf)
         scrollIndicatorRaf = 0
       }
-      viewportEl?.removeEventListener('scroll', scheduleScrollDownIndicator)
+      viewportEl?.removeEventListener('scroll', onViewportScroll)
+      xtermEl?.removeEventListener('wheel', onXtermWheelAfter)
+      paneRoot?.removeEventListener('wheel', onPaneWheelCapture, { capture: true })
       if (repaintRaf !== 0) {
         cancelAnimationFrame(repaintRaf)
         repaintRaf = 0
@@ -1037,7 +1063,7 @@ export const TerminalPane: React.FC<Props> = ({
     const fit = fitRef.current
     if (term && fit) {
       term.options.fontSize = config.fontSize
-      fitTerminalPreserveScroll(term, fit)
+      fitTerminalPreserveScroll(term, fit, followStateRef.current)
       window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
     }
   }, [config.fontSize, sessionId])
@@ -1047,7 +1073,7 @@ export const TerminalPane: React.FC<Props> = ({
       setTimeout(() => {
         const term = termRef.current!
         const fit = fitRef.current!
-        fitTerminalPreserveScroll(term, fit)
+        fitTerminalPreserveScroll(term, fit, followStateRef.current)
         window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
         term.focus()
       }, 10)
@@ -1059,7 +1085,7 @@ export const TerminalPane: React.FC<Props> = ({
     const t = setTimeout(() => {
       const term = termRef.current!
       const fit = fitRef.current!
-      fitTerminalPreserveScroll(term, fit)
+      fitTerminalPreserveScroll(term, fit, followStateRef.current)
       window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
     }, 60)
     return () => clearTimeout(t)
@@ -1245,7 +1271,11 @@ export const TerminalPane: React.FC<Props> = ({
             onPointerDown={onTerminalChromePointerDown}
             onClick={() => {
               onRequestPaneFocusRef.current?.()
-              termRef.current?.scrollToBottom()
+              const term = termRef.current
+              if (term) {
+                clearFollowDetached(followStateRef.current)
+                followTerminalOutput(term)
+              }
               termRef.current?.focus()
             }}
           />

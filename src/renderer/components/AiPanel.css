@@ -9,7 +9,8 @@
   --ai-pad-y: 6px;
   --ai-bubble-r: var(--radius, 8px);
 
-  pointer-events: auto;
+  /* Solo la cabecera y el cuerpo expandido capturan eventos; el resto deja pasar la rueda a xterm. */
+  pointer-events: none;
   width: 100%;
   min-width: 0;
   display: flex;
@@ -67,6 +68,11 @@
   .terminal-pane-ai-dock--expanded .ai-panel-expanded-body {
     animation: none;
   }
+}
+
+.ai-panel-header,
+.ai-panel-expanded-body {
+  pointer-events: auto;
 }
 
 .ai-panel-header {

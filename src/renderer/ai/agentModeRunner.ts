@@ -1,4 +1,5 @@
-import { chatOllama, type ChatMessage, type OllamaOptions } from '@ai/ollamaClient'
+import type { ChatMessage } from '@ai/types'
+import { chatAI, type AiOptions } from '@ai/aiClient'
 import { extractReadBlock, extractRunBlocks, extractWriteBlocks, fallbackExtractWrites } from '@shared/agentFileProtocol'
 import type { AgentShellPolicy } from '@shared/configSchema'
 
@@ -6,7 +7,7 @@ const MAX_AGENT_ROUNDS = 8
 const MAX_WRITE_OPS = 25
 const MAX_RUN_COMMANDS = 8
 
-export interface AgentModeLoopOptions extends OllamaOptions {
+export interface AgentModeLoopOptions extends AiOptions {
   shellPolicy: AgentShellPolicy
   /** Obligatorio si `shellPolicy === 'ask'` */
   confirmShell?: (command: string) => Promise<boolean>
@@ -83,7 +84,7 @@ export async function runChatWithAgentFileLoop(
   opts: AgentModeLoopOptions,
   onStreamText: (visible: string) => void,
 ): Promise<string> {
-  const { shellPolicy, confirmShell, ...ollamaOpts } = opts
+  const { shellPolicy, confirmShell, ...aiOpts } = opts
   let chain = [...initialMessages]
   const uiParts: string[] = []
   /** Quedó un READ/RUN pendiente y no hubo más rondas: el modelo no pudo contestar tras la última herramienta. */
@@ -91,8 +92,8 @@ export async function runChatWithAgentFileLoop(
 
   for (let round = 0; round < MAX_AGENT_ROUNDS; round++) {
     let buf = ''
-    await chatOllama(chain, {
-      ...ollamaOpts,
+    await chatAI(chain, {
+      ...aiOpts,
       onToken: tok => {
         buf += tok
         onStreamText([...uiParts, buf.trimEnd()].filter(Boolean).join('\n\n'))

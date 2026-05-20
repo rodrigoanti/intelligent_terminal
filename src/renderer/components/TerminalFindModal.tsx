@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useT } from '@i18n/useT'
 import { TerminalModal } from './TerminalModal'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
@@ -37,6 +38,7 @@ export const TerminalFindModal: React.FC<Props> = ({
   onGoToBufferMatch,
   onApplyHistoryLine,
 }) => {
+  const { t } = useT()
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
@@ -52,8 +54,8 @@ export const TerminalFindModal: React.FC<Props> = ({
   }, [open])
 
   const submit = useCallback((): void => {
-    const t = query.trim()
-    if (!t) return
+    const q = query.trim()
+    if (!q) return
     setHasSearched(true)
     onSearch(query)
   }, [onSearch, query])
@@ -78,27 +80,29 @@ export const TerminalFindModal: React.FC<Props> = ({
     <TerminalModal
       open={open}
       onClose={onClose}
-      title="buscar en terminal"
+      title={t('find.title')}
       titleId="terminal-find-title"
       size="lg"
       zIndex={680}
       footer={
         <>
           <span className="terminal-find-footer-note">
-            {hasSearched ? `${bufferMatches.length} en buffer · ${historyMatches.length} en historial` : '⌘F / Ctrl+F'}
+            {hasSearched
+              ? t('find.footerResults', { buffer: bufferMatches.length, history: historyMatches.length })
+              : t('find.footerShortcut')}
           </span>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            cerrar
+            {t('find.closeButton')}
           </Button>
         </>
       }
     >
       <p className="terminal-find-intro" id="terminal-find-desc">
-        ¿Qué quieres buscar?
+        {t('find.intro')}
       </p>
       <div className="terminal-find-field">
         <label className="terminal-find-label" htmlFor="terminal-find-input">
-          texto (salida, scrollback e historial de comandos de esta terminal)
+          {t('find.fieldLabel')}
         </label>
         <div className="terminal-find-input-row">
           <Input
@@ -107,27 +111,27 @@ export const TerminalFindModal: React.FC<Props> = ({
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="ej. npm error, ruta, comando…"
+            placeholder={t('find.inputPlaceholder')}
             autoComplete="off"
             spellCheck={false}
             aria-describedby="terminal-find-desc"
           />
           <Button variant="primary" size="sm" onClick={submit}>
-            buscar
+            {t('find.searchButton')}
           </Button>
         </div>
       </div>
       <p className="terminal-find-hint">
-        {!hasSearched ? 'Escribe un texto y pulsa buscar. ' : null}
-        No distingue mayúsculas. Pulsa Enter o «buscar».
+        {!hasSearched ? t('find.preSearchHint') : null}
+        {t('find.caseHint')}
       </p>
 
-      {noMatchesAfterSearch && <p className="terminal-find-empty">Sin coincidencias.</p>}
+      {noMatchesAfterSearch && <p className="terminal-find-empty">{t('find.noMatches')}</p>}
 
       {bufferMatches.length > 0 && (
-        <section className="terminal-find-section" aria-label="Coincidencias en la salida">
+        <section className="terminal-find-section" aria-label={t('find.outputAriaLabel')}>
           <h3 className="terminal-find-section-title">
-            salida y scrollback ({bufferMatches.length})
+            {t('find.outputSectionTitle', { n: bufferMatches.length })}
           </h3>
           <div className="terminal-find-list" role="list">
             {bufferMatches.map((m, i) => (
@@ -139,7 +143,7 @@ export const TerminalFindModal: React.FC<Props> = ({
                 onClick={() => onGoToBufferMatch(m)}
               >
                 <span className="terminal-find-item-meta">
-                  línea {m.lineIndex + 1} · columna {m.col + 1}
+                  {t('find.matchMeta', { line: m.lineIndex + 1, col: m.col + 1 })}
                 </span>
                 <MatchLinePreview text={m.lineText} col={m.col} len={m.matchLen} />
               </button>
@@ -149,9 +153,9 @@ export const TerminalFindModal: React.FC<Props> = ({
       )}
 
       {historyMatches.length > 0 && (
-        <section className="terminal-find-section" aria-label="Coincidencias en historial">
+        <section className="terminal-find-section" aria-label={t('find.historyAriaLabel')}>
           <h3 className="terminal-find-section-title">
-            historial de comandos ({historyMatches.length})
+            {t('find.historySectionTitle', { n: historyMatches.length })}
           </h3>
           <div className="terminal-find-list" role="list">
             {historyMatches.map((line, i) => (
@@ -160,10 +164,10 @@ export const TerminalFindModal: React.FC<Props> = ({
                 type="button"
                 className="terminal-find-item"
                 role="listitem"
-                title="Escribir en la terminal (sin ejecutar)"
+                title={t('find.historyItemTitle')}
                 onClick={() => onApplyHistoryLine(line)}
               >
-                <span className="terminal-find-item-meta">comando guardado</span>
+                <span className="terminal-find-item-meta">{t('find.historyItemMeta')}</span>
                 <span className="terminal-find-preview">{line}</span>
               </button>
             ))}

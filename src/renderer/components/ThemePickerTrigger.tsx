@@ -1,4 +1,5 @@
 import React from 'react'
+import { useT } from '@i18n/useT'
 import { Icon } from './ui/Icon'
 import { Button } from './ui/Button'
 import { getTheme } from '@themes/presets'
@@ -16,6 +17,7 @@ export const ThemePickerTrigger: React.FC<ThemePickerTriggerProps> = ({
   isOpen,
   onClick,
 }) => {
+  const { t } = useT()
   const theme = getTheme(themeId)
   const bg = theme.vars['--bg'] ?? theme.xterm.background
   const accent = theme.vars['--accent'] ?? theme.xterm.cursor
@@ -27,7 +29,7 @@ export const ThemePickerTrigger: React.FC<ThemePickerTriggerProps> = ({
       className="theme-picker-trigger"
       style={{ '--swatch-bg': bg, '--swatch-accent': accent } as React.CSSProperties}
       onClick={onClick}
-      title="Elegir tema"
+      title={t('themePicker.triggerTitle')}
       aria-haspopup="dialog"
       aria-expanded={isOpen}
     >

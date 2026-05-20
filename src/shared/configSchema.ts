@@ -1,6 +1,12 @@
 /** Política de ejecución de shell del modo agente (el modelo propone bloques RUN). */
 export type AgentShellPolicy = 'off' | 'ask' | 'always'
 
+/** Proveedor de IA seleccionado. */
+export type AiProvider = 'ollama' | 'anthropic' | 'openai'
+
+/** Idioma de la interfaz. */
+export type Language = 'en' | 'es'
+
 const SPOTIFY_PLAYLIST_ID_RE = /^[a-zA-Z0-9]{22}$/
 
 /**
@@ -33,7 +39,13 @@ export function canonicalizeMusicPlaylistIdsByMood(byMood: Record<string, string
 }
 
 export interface AppConfig {
+  /** Proveedor de IA activo. */
+  aiProvider: AiProvider
   ollamaBaseURL: string
+  /** API key de Anthropic (claude-*). Solo se usa cuando aiProvider === 'anthropic'. */
+  anthropicApiKey: string
+  /** API key de OpenAI (gpt-*, o*). Solo se usa cuando aiProvider === 'openai'. */
+  openaiApiKey: string
   defaultModel: string
   maxContextLines: number
   themeId: string
@@ -46,8 +58,8 @@ export interface AppConfig {
    */
   agentShellPolicy: AgentShellPolicy
   /**
-   * Activa el modo thinking de Ollama (`think: true` en la petición).
-   * Solo tiene efecto en modelos que lo soportan (qwen3, deepseek-r1, etc.).
+   * Activa el modo thinking (Ollama: `think: true`; Anthropic: extended thinking).
+   * Solo tiene efecto en modelos que lo soportan.
    */
   thinkingMode: boolean
   /**
@@ -55,10 +67,21 @@ export interface AppConfig {
    * Solo se usan entradas no vacías.
    */
   musicPlaylistIdsByMood?: Record<string, string>
+  /** Idioma de la interfaz. */
+  language: Language
+}
+
+export const DEFAULT_MODEL_BY_PROVIDER: Record<AiProvider, string> = {
+  ollama: 'llama3.2',
+  anthropic: 'claude-sonnet-4-5',
+  openai: 'gpt-4o',
 }
 
 export const CONFIG_DEFAULTS: AppConfig = {
+  aiProvider: 'ollama',
   ollamaBaseURL: 'http://127.0.0.1:11434',
+  anthropicApiKey: '',
+  openaiApiKey: '',
   defaultModel: 'llama3.2',
   maxContextLines: 200,
   themeId: 'vscodeDark',
@@ -67,6 +90,7 @@ export const CONFIG_DEFAULTS: AppConfig = {
   agentShellPolicy: 'off',
   thinkingMode: false,
   musicPlaylistIdsByMood: {},
+  language: 'en',
 }
 
 export function mergeWithDefaults(partial: Partial<AppConfig>): AppConfig {
@@ -80,13 +104,25 @@ export function mergeWithDefaults(partial: Partial<AppConfig>): AppConfig {
 
 export function validateConfig(config: AppConfig): string[] {
   const errors: string[] = []
-  try {
-    const url = new URL(config.ollamaBaseURL)
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      errors.push('ollamaBaseURL debe usar protocolo http o https')
+  const validProviders: AiProvider[] = ['ollama', 'anthropic', 'openai']
+  if (!validProviders.includes(config.aiProvider)) {
+    errors.push('aiProvider debe ser ollama, anthropic u openai')
+  }
+  if (config.aiProvider === 'ollama') {
+    try {
+      const url = new URL(config.ollamaBaseURL)
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        errors.push('ollamaBaseURL debe usar protocolo http o https')
+      }
+    } catch {
+      errors.push('ollamaBaseURL no es una URL válida')
     }
-  } catch {
-    errors.push('ollamaBaseURL no es una URL válida')
+  }
+  if (config.aiProvider === 'anthropic' && !config.anthropicApiKey.trim()) {
+    errors.push('anthropicApiKey es obligatorio al usar Anthropic')
+  }
+  if (config.aiProvider === 'openai' && !config.openaiApiKey.trim()) {
+    errors.push('openaiApiKey es obligatorio al usar OpenAI')
   }
   if (config.maxContextLines < 10 || config.maxContextLines > 2000) {
     errors.push('maxContextLines debe estar entre 10 y 2000')

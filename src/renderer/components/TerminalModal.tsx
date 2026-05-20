@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react'
+import { useT } from '@i18n/useT'
 import { Icon } from './ui/Icon'
 import './TerminalModal.css'
 
@@ -47,6 +48,7 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
   panelVariant = 'default',
   bodyLayout = 'default',
 }) => {
+  const { t } = useT()
   useEffect(() => {
     if (!open || !closeOnEscape) return
     const onKey = (e: KeyboardEvent): void => {
@@ -96,8 +98,8 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
                 type="button"
                 className="terminal-modal-header-close"
                 onClick={onClose}
-                title="Cerrar (Esc)"
-                aria-label="Cerrar"
+                title={t('ui.closeTitle')}
+                aria-label={t('ui.closeAriaLabel')}
               >
                 <Icon name="close" size={12} />
               </button>

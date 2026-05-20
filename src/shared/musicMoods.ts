@@ -1,8 +1,8 @@
 /** Claves guardadas en `AppConfig.musicPlaylistIdsByMood`. */
 export const MUSIC_MOODS = [
-  { id: 'focus', label: 'Enfoque' },
+  { id: 'focus', label: 'Focus' },
   { id: 'chill', label: 'Chill' },
-  { id: 'energy', label: 'Energía' },
+  { id: 'energy', label: 'Energy' },
   { id: 'ambient', label: 'Ambient' },
 ] as const
 

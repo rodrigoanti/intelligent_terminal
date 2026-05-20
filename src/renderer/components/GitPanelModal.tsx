@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppConfig } from '@shared/configSchema'
 import type { GitCommandResult, GitRepoStatus } from '@shared/gitSessionTypes'
 import { suggestGitCommitMessage } from '@ai/ollamaClient'
+import { useT } from '@i18n/useT'
 import { TerminalModal } from './TerminalModal'
 import { Button } from './ui/Button'
 import { TextArea } from './ui/TextArea'
@@ -34,6 +35,7 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
   config,
   onClose,
 }) => {
+  const { t } = useT()
   const [status, setStatus] = useState<GitRepoStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
@@ -69,7 +71,7 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
 
   const refreshAll = useCallback((): void => {
     void refresh()
-    setActionsRefreshToken(t => t + 1)
+    setActionsRefreshToken(n => n + 1)
   }, [refresh])
 
   useEffect(() => {
@@ -107,7 +109,7 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
   const onCommit = (): void => {
     const msg = commitMsg.trim()
     if (!msg) {
-      setLastLog('Escribe un mensaje de commit.')
+      setLastLog(t('git.emptyMessageError'))
       return
     }
     void (async (): Promise<void> => {
@@ -115,7 +117,6 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
       setCommitMsg('')
     })()
   }
-
 
   const onSuggestAi = (): void => {
     aiAbortRef.current?.abort()
@@ -127,7 +128,7 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
       try {
         const diff = await window.api.gitDiffForAi(sessionId)
         if (!diff.ok) {
-          setLastLog(diff.error ?? 'No se pudo leer el diff para la IA.')
+          setLastLog(diff.error ?? t('git.diffError'))
           return
         }
         const suggestion = await suggestGitCommitMessage(diff.text, {
@@ -156,138 +157,136 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
       <TerminalModal
         open={open}
         onClose={onClose}
-        title="git"
+        title={t('git.title')}
         titleId="git-panel-title"
         size="xxl"
         zIndex={670}
-        panelClassName="git-panel-modal-panel"
-        bodyClassName="terminal-modal-body git-panel-body"
         footer={
           <span className="git-panel-footer-hint">
-            cwd de la sesión · pull con --ff-only · commit solo con staging · Actions vía gh · esc cerrar
+            {t('git.footerHint')}
           </span>
         }
       >
         <div className="git-panel-layout">
           <div className="git-panel-layout__main">
-        <div className="git-panel-scroll">
-          {loading && !status && (
-            <div className="git-panel-loading">
-              <Spinner aria-label="Cargando estado git" />
-            </div>
-          )}
+            <div className="git-panel-scroll">
+              {loading && !status && (
+                <div className="git-panel-loading">
+                  <Spinner aria-label={t('git.loadingAriaLabel')} />
+                </div>
+              )}
 
-          {status && (
-            <>
-              <div className="git-panel-top-bar">
-                <div className="git-panel-top-bar__lead">
-                  <div
-                    className="git-panel-top-bar__cwd"
-                    title={`Carpeta de la sesión (cwd): ${status.sessionCwd || '—'}`}
-                  >
-                    <span className="git-panel-top-bar__cwd-icon" aria-hidden>
-                      <Icon name="folder-filled" size={14} />
-                    </span>
-                    <code className="git-panel-top-bar__cwd-path">{status.sessionCwd || '—'}</code>
+              {status && (
+                <>
+                  <div className="git-panel-top-bar">
+                    <div className="git-panel-top-bar__lead">
+                      <div
+                        className="git-panel-top-bar__cwd"
+                        title={t('git.cwdTooltip', { cwd: status.sessionCwd || '—' })}
+                      >
+                        <span className="git-panel-top-bar__cwd-icon" aria-hidden>
+                          <Icon name="folder-filled" size={14} />
+                        </span>
+                        <code className="git-panel-top-bar__cwd-path">{status.sessionCwd || '—'}</code>
+                      </div>
+                      {status.isRepo && (
+                        <div className="git-panel-top-bar__branch">
+                          <GitBranchBadge status={status} labelStyle="icon" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="git-panel-top-bar__actions">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={!repo || !idle}
+                        onClick={refreshAll}
+                      >
+                        {t('git.refreshButton')}
+                      </Button>
+                      <Button variant="secondary" size="sm" disabled={!repo || !idle} onClick={onPull}>
+                        {t('git.pullButton')}
+                      </Button>
+                    </div>
                   </div>
-                  {status.isRepo && (
-                    <div className="git-panel-top-bar__branch">
-                      <GitBranchBadge status={status} labelStyle="icon" />
+
+                  {status.isRepo && status.repoRoot && status.repoRoot !== status.sessionCwd && (
+                    <div className="git-panel-meta git-panel-meta--extra">
+                      <span className="git-panel-meta__label">{t('git.repoRootLabel')}</span>
+                      <code className="git-panel-meta__path">{status.repoRoot}</code>
                     </div>
                   )}
-                </div>
-                <div className="git-panel-top-bar__actions">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={!repo || !idle}
-                    onClick={refreshAll}
-                  >
-                    actualizar
-                  </Button>
-                  <Button variant="secondary" size="sm" disabled={!repo || !idle} onClick={onPull}>
-                    pull
-                  </Button>
-                </div>
-              </div>
 
-              {status.isRepo && status.repoRoot && status.repoRoot !== status.sessionCwd && (
-                <div className="git-panel-meta git-panel-meta--extra">
-                  <span className="git-panel-meta__label">raíz repo</span>
-                  <code className="git-panel-meta__path">{status.repoRoot}</code>
-                </div>
-              )}
+                  {!status.isRepo && (
+                    <p className="git-panel-not-repo" role="alert">
+                      {status.error ?? t('git.notGitRepo')}
+                    </p>
+                  )}
 
-              {!status.isRepo && (
-                <p className="git-panel-not-repo" role="alert">
-                  {status.error ?? 'Esta carpeta no es un repositorio git.'}
-                </p>
-              )}
+                  {status.isRepo && (
+                    <>
+                      <h3 className="git-panel-section-title">{t('git.diffSummaryTitle')}</h3>
+                      <GitDiffBlocks
+                        stagedTitle={t('git.stagedLabel')}
+                        stagedBody={status.stagedDiffStat ?? ''}
+                        unstagedTitle={t('git.unstagedLabel')}
+                        unstagedBody={status.diffStat ?? ''}
+                      />
+                    </>
+                  )}
 
-              {status.isRepo && (
-                <>
-                  <h3 className="git-panel-section-title">Resumen diff</h3>
-                  <GitDiffBlocks
-                    stagedTitle="En staging (git diff --cached --stat)"
-                    stagedBody={status.stagedDiffStat ?? ''}
-                    unstagedTitle="Sin staging (git diff --stat)"
-                    unstagedBody={status.diffStat ?? ''}
-                  />
+                  {repo && status && (
+                    <div className="git-panel-commit">
+                      <h3 className="git-panel-section-title">{t('git.commitTitle')}</h3>
+                      <p className="git-panel-commit-hint">
+                        {t('git.commitHint')}
+                        {!status.hasStaged && t('git.nothingStaged')}
+                      </p>
+                      <div className="git-panel-commit-row">
+                        <Button variant="ghost" size="sm" disabled={!idle} onClick={onSuggestAi}>
+                          {busy === 'ai-suggest' ? (
+                            <Spinner aria-label={t('git.suggestingAriaLabel')} />
+                          ) : (
+                            <span className="git-panel-ia-suggest-inner">
+                              <Icon name="sparkles" size={14} aria-hidden />
+                              <span>{t('git.suggestButton')}</span>
+                            </span>
+                          )}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={!idle}
+                          onClick={() => void runAndLog('git add -A', () => window.api.gitStageAll(sessionId))}
+                        >
+                          {t('git.stageAllButton')}
+                        </Button>
+                      </div>
+                      <TextArea
+                        size="md"
+                        rows={3}
+                        placeholder={t('git.commitPlaceholder')}
+                        value={commitMsg}
+                        onChange={e => setCommitMsg(e.target.value)}
+                        spellCheck
+                      />
+                      <Button variant="primary" size="sm" disabled={!canCommit} onClick={onCommit}>
+                        {t('git.commitButton')}
+                      </Button>
+                      <div className="git-panel-push-row">
+                        <Button variant="secondary" size="sm" disabled={!repo || !idle} onClick={onPush}>
+                          {t('git.pushButton')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {lastLog.trim().length > 0 && (
+                    <pre className="git-panel-log" role="log">{lastLog}</pre>
+                  )}
                 </>
               )}
-
-              {repo && status && (
-                <div className="git-panel-commit">
-                  <h3 className="git-panel-section-title">Commit</h3>
-                  <p className="git-panel-commit-hint">
-                    Solo se incluyen cambios ya en <strong>staging</strong>.
-                    {!status.hasStaged && ' Ahora no hay nada en staging.'}
-                  </p>
-                  <div className="git-panel-commit-row">
-                    <Button variant="ghost" size="sm" disabled={!idle} onClick={onSuggestAi}>
-                      {busy === 'ai-suggest' ? (
-                        <Spinner aria-label="Generando mensaje" />
-                      ) : (
-                        <span className="git-panel-ia-suggest-inner">
-                          <Icon name="sparkles" size={14} aria-hidden />
-                          <span>IA: sugerir mensaje</span>
-                        </span>
-                      )}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={!idle}
-                      onClick={() => void runAndLog('git add -A', () => window.api.gitStageAll(sessionId))}
-                    >
-                      stage all
-                    </Button>
-                  </div>
-                  <TextArea
-                    size="md"
-                    rows={3}
-                    placeholder="Mensaje de commit (una línea o varias)"
-                    value={commitMsg}
-                    onChange={e => setCommitMsg(e.target.value)}
-                    spellCheck
-                  />
-                  <Button variant="primary" size="sm" disabled={!canCommit} onClick={onCommit}>
-                    commit
-                  </Button>
-                  <div className="git-panel-push-row">
-                    <Button variant="secondary" size="sm" disabled={!repo || !idle} onClick={onPush}>
-                      push
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {lastLog.trim().length > 0 && (
-                <pre className="git-panel-log" role="log">{lastLog}</pre>
-              )}
-            </>
-          )}
-        </div>
+            </div>
           </div>
           <GitHubActionsPanel
             sessionId={sessionId}
@@ -296,7 +295,6 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
           />
         </div>
       </TerminalModal>
-
     </>
   )
 }

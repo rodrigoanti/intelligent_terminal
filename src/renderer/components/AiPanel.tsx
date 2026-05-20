@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  chatOllama,
   buildExplainPrompt,
   buildChatSystemPrompt,
   buildAgentMdBootstrapMessages,
@@ -9,8 +8,11 @@ import {
   parseAgentMdRefreshResponse,
   stripOuterMarkdownFence,
   makeInteractionLogEntry,
+  fallbackInteractionLogLine,
 } from '@ai/ollamaClient'
-import type { ChatMessage } from '@ai/ollamaClient'
+import type { ChatMessage } from '@ai/types'
+import { chatAI, aiOptionsFromConfig } from '@ai/aiClient'
+import { useT } from '@i18n/useT'
 import type { AppConfig, AgentShellPolicy } from '@shared/configSchema'
 import type { ProjectAiContextForAi } from '@shared/projectAiContext'
 import { runChatWithAgentFileLoop } from '../ai/agentModeRunner'
@@ -47,6 +49,7 @@ interface Props {
 export const AiPanel: React.FC<Props> = ({
   config, sessionId, selectedText, getTerminalContext, onInjectLine, onCollapse, onExpand, expanded, onConfigPatch,
 }) => {
+  const { t } = useT()
   const [messages, setMessages] = useState<AiMessageEntry[]>([])
   const [interactionsLog, setInteractionsLog] = useState<string[]>([])
   const [input, setInput] = useState('')
@@ -79,19 +82,25 @@ export const AiPanel: React.FC<Props> = ({
   }, [])
 
   const scheduleInteractionLogUpdate = useCallback((userMsg: string, assistantMsg: string) => {
-    void makeInteractionLogEntry(userMsg, assistantMsg, {
-      baseURL: config.ollamaBaseURL,
-      model: config.defaultModel,
-      think: false,
-      signal: AbortSignal.timeout(60_000),
-    }).then(entry => {
+    function persist(entry: string): void {
       setInteractionsLog(prev => {
         const next = cappedInteractionsLog(prev, entry)
         window.api.saveInteractionsLog(sessionId, next)
         return next
       })
-    })
-  }, [config.ollamaBaseURL, config.defaultModel, sessionId])
+    }
+
+    if (config.aiProvider === 'ollama') {
+      void makeInteractionLogEntry(userMsg, assistantMsg, {
+        baseURL: config.ollamaBaseURL,
+        model: config.defaultModel,
+        think: false,
+        signal: AbortSignal.timeout(60_000),
+      }).then(persist)
+    } else {
+      persist(fallbackInteractionLogLine(userMsg, assistantMsg))
+    }
+  }, [config.aiProvider, config.ollamaBaseURL, config.defaultModel, sessionId])
 
   const scheduleAgentMdRefreshAfterTurn = useCallback(
     (
@@ -106,12 +115,10 @@ export const AiPanel: React.FC<Props> = ({
           try { tree = await window.api.getAgentFolderTree(sessionId) } catch { tree = '(could not read folder tree)' }
           const terminalContext = getTerminalContextRef.current()
           const msgs = buildAgentMdRefreshMessages(currentAgentMd, tree, terminalContext, workspace, lastUserMessage, lastAssistantMessage)
-          const raw = await chatOllama(msgs, {
-            baseURL: config.ollamaBaseURL,
-            model: config.defaultModel,
+          const raw = await chatAI(msgs, aiOptionsFromConfig(config, {
             signal: AbortSignal.timeout(120_000),
             think: false,
-          })
+          }))
           const body = parseAgentMdRefreshResponse(raw)
           if (body?.trim()) {
             const writeRes = await window.api.writeAgentMd(sessionId, body)
@@ -122,7 +129,7 @@ export const AiPanel: React.FC<Props> = ({
         }
       })()
     },
-    [sessionId, config.ollamaBaseURL, config.defaultModel],
+    [sessionId, config],
   )
 
   useEffect(() => {
@@ -148,7 +155,7 @@ export const AiPanel: React.FC<Props> = ({
       let tree = ''
       try { tree = await window.api.getAgentFolderTree(sessionId) } catch { tree = '(could not read folder tree)' }
       const bootstrapMsgs = buildAgentMdBootstrapMessages(tree, terminalContext, workspace)
-      const generated = await chatOllama(bootstrapMsgs, { baseURL: config.ollamaBaseURL, model: config.defaultModel, signal })
+      const generated = await chatAI(bootstrapMsgs, aiOptionsFromConfig(config, { signal }))
       const body = stripOuterMarkdownFence(generated)
       if (!body.trim()) return null
       try {
@@ -157,7 +164,7 @@ export const AiPanel: React.FC<Props> = ({
       } catch (e) { console.error('[agentMd] escritura:', e) }
       return body
     },
-    [sessionId, config.ollamaBaseURL, config.defaultModel],
+    [sessionId, config],
   )
 
   useEffect(() => {
@@ -256,23 +263,23 @@ export const AiPanel: React.FC<Props> = ({
       const initialMsgs: ChatMessage[] = [sysMsg, ...historyMsgs, userMsg]
       let full = ''
       let thinkingFull = ''
+      const baseOpts = aiOptionsFromConfig(config, {
+        signal: ctrl.signal,
+        onThinkingToken: tok => { thinkingFull += tok; updateEntryThinking(assistantId, thinkingFull, true) },
+      })
       if (config.agentMode) {
         full = await runChatWithAgentFileLoop(
           initialMsgs, sessionId,
           {
-            baseURL: config.ollamaBaseURL, model: config.defaultModel, signal: ctrl.signal,
+            ...baseOpts,
             shellPolicy: config.agentShellPolicy ?? 'off',
             confirmShell: config.agentShellPolicy === 'ask' ? confirmShell : undefined,
-            think: config.thinkingMode ?? false,
-            onThinkingToken: tok => { thinkingFull += tok; updateEntryThinking(assistantId, thinkingFull, true) },
           },
           visible => updateEntry(assistantId, visible, true),
         )
       } else {
-        await chatOllama(initialMsgs, {
-          baseURL: config.ollamaBaseURL, model: config.defaultModel, signal: ctrl.signal,
-          think: config.thinkingMode ?? false,
-          onThinkingToken: tok => { thinkingFull += tok; updateEntryThinking(assistantId, thinkingFull, true) },
+        await chatAI(initialMsgs, {
+          ...baseOpts,
           onToken: tok => { full += tok; updateEntry(assistantId, full, true) },
         })
       }
@@ -284,8 +291,8 @@ export const AiPanel: React.FC<Props> = ({
       }
     } catch (e: unknown) {
       if ((e as Error).name !== 'AbortError') {
-        setError(`Error connecting to Ollama: ${(e as Error).message}`)
-        if (assistantId) updateEntry(assistantId, '_Could not get a response._', false)
+        setError(t('ai.connectError', { provider: config.aiProvider, message: (e as Error).message }))
+        if (assistantId) updateEntry(assistantId, t('ai.noResponse'), false)
       }
     } finally {
       aiRequestInFlightRef.current = false
@@ -334,23 +341,23 @@ export const AiPanel: React.FC<Props> = ({
       ]
       let full = ''
       let thinkingFull = ''
+      const baseOpts = aiOptionsFromConfig(config, {
+        signal: ctrl.signal,
+        onThinkingToken: tok => { thinkingFull += tok; updateEntryThinking(assistantId, thinkingFull, true) },
+      })
       if (config.agentMode) {
         full = await runChatWithAgentFileLoop(
           history, sessionId,
           {
-            baseURL: config.ollamaBaseURL, model: config.defaultModel, signal: ctrl.signal,
+            ...baseOpts,
             shellPolicy: config.agentShellPolicy ?? 'off',
             confirmShell: config.agentShellPolicy === 'ask' ? confirmShell : undefined,
-            think: config.thinkingMode ?? false,
-            onThinkingToken: tok => { thinkingFull += tok; updateEntryThinking(assistantId, thinkingFull, true) },
           },
           visible => updateEntry(assistantId, visible, true),
         )
       } else {
-        await chatOllama(history, {
-          baseURL: config.ollamaBaseURL, model: config.defaultModel, signal: ctrl.signal,
-          think: config.thinkingMode ?? false,
-          onThinkingToken: tok => { thinkingFull += tok; updateEntryThinking(assistantId, thinkingFull, true) },
+        await chatAI(history, {
+          ...baseOpts,
           onToken: tok => { full += tok; updateEntry(assistantId, full, true) },
         })
       }
@@ -362,8 +369,8 @@ export const AiPanel: React.FC<Props> = ({
       }
     } catch (e: unknown) {
       if ((e as Error).name !== 'AbortError') {
-        setError(`Error connecting to Ollama: ${(e as Error).message}`)
-        if (assistantId) updateEntry(assistantId, '_Could not get a response._', false)
+        setError(t('ai.connectError', { provider: config.aiProvider, message: (e as Error).message }))
+        if (assistantId) updateEntry(assistantId, t('ai.noResponse'), false)
       }
     } finally {
       aiRequestInFlightRef.current = false
@@ -454,8 +461,8 @@ export const AiPanel: React.FC<Props> = ({
       {createPortal(
         <ConfirmTerminalModal
           open={confirmingDelete}
-          message="¿Borrar todo el historial de este chat?"
-          detail="Esta acción no se puede deshacer."
+          message={t('ai.confirmDeleteMessage')}
+          detail={t('ai.confirmDeleteDetail')}
           onConfirm={confirmDelete}
           onCancel={() => setConfirmingDelete(false)}
         />,
@@ -465,7 +472,7 @@ export const AiPanel: React.FC<Props> = ({
         <ConfirmTerminalModal
           open={shellPrompt !== null}
           zIndex={760}
-          message="¿Ejecutar este comando del agente en el cwd de esta sesión?"
+          message={t('ai.confirmShellMessage')}
           detail={shellPrompt?.cmd}
           onConfirm={handleShellConfirm}
           onCancel={handleShellCancel}

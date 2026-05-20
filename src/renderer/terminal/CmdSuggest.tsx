@@ -1,5 +1,6 @@
 import React from 'react'
 import { Icon } from '../components/ui/Icon'
+import { useT } from '@i18n/useT'
 
 export interface CmdSnippet {
   label: string
@@ -65,28 +66,30 @@ export const CmdSuggest: React.FC<CmdSuggestProps> = ({
   onPickSnippet,
   onClearHistory,
 }) => {
+  const { t } = useT()
+
   const label =
     visibleRecentMatches.length > 0 && visibleSnippets.length > 0
-      ? `Comandos recientes y sugerencias${cmdSuggestCmd ? ` (${cmdSuggestCmd})` : ''}`
+      ? t('cmdSuggest.ariaRecentsAndSuggestions', { cmd: cmdSuggestCmd ?? '' })
       : visibleRecentMatches.length > 0
-        ? 'Comandos recientes'
+        ? t('cmdSuggest.ariaRecents')
         : cmdSuggestCmd
-          ? `Sugerencias para ${cmdSuggestCmd}`
-          : 'Sugerencias'
+          ? t('cmdSuggest.ariaSuggestions', { cmd: cmdSuggestCmd })
+          : t('cmdSuggest.ariaOnlySuggestions')
 
   return (
     <div className="cmd-suggest" role="listbox" aria-label={label}>
       {visibleRecentMatches.length > 0 && (
         <div className={['cmd-suggest-recent-block', visibleSnippets.length > 0 ? 'cmd-suggest-recent-block--sep' : ''].filter(Boolean).join(' ')}>
           <div className="cmd-suggest-section-header">
-            <div className="cmd-suggest-section-title cmd-suggest-section-title--in-header">recientes</div>
+            <div className="cmd-suggest-section-title cmd-suggest-section-title--in-header">{t('cmdSuggest.recentsTitle')}</div>
             <button
               type="button"
               className="cmd-suggest-clear-history-btn"
-              title="Borrar la lista de comandos recientes de esta terminal"
+              title={t('cmdSuggest.clearHistoryTitle')}
               onMouseDown={e => { e.preventDefault(); onClearHistory() }}
             >
-              Vaciar historial
+              {t('cmdSuggest.clearHistory')}
             </button>
           </div>
           {visibleRecentMatches.map(cmd => (
@@ -94,6 +97,7 @@ export const CmdSuggest: React.FC<CmdSuggestProps> = ({
               key={`recent:${cmd}`}
               display={cmd}
               draft={cmdSuggestDraft}
+              itemTitle={t('cmdSuggest.itemTitle')}
               onPick={() => onPickRecent(cmd)}
             />
           ))}
@@ -107,6 +111,7 @@ export const CmdSuggest: React.FC<CmdSuggestProps> = ({
               key={s.cmd}
               display={s.label}
               draft={cmdSuggestDraft}
+              itemTitle={t('cmdSuggest.itemTitle')}
               onPick={() => onPickSnippet(s.cmd)}
             />
           ))}
@@ -119,16 +124,17 @@ export const CmdSuggest: React.FC<CmdSuggestProps> = ({
 interface CmdSuggestItemProps {
   display: string
   draft: string
+  itemTitle: string
   onPick: () => void
 }
 
-const CmdSuggestItem: React.FC<CmdSuggestItemProps> = ({ display, draft, onPick }) => (
+const CmdSuggestItem: React.FC<CmdSuggestItemProps> = ({ display, draft, itemTitle, onPick }) => (
   <button
     type="button"
     className="cmd-suggest-item"
     onMouseDown={e => { e.preventDefault(); onPick() }}
     role="option"
-    title="Escribir en la terminal (sin ejecutar)"
+    title={itemTitle}
   >
     <span className="cmd-suggest-script-icon" aria-hidden="true">
       <Icon name="terminal" size={12} />

@@ -8,10 +8,8 @@ import {
   RUN_BLOCK_START,
 } from '@shared/agentFileProtocol'
 
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
+export type { ChatMessage } from './types'
+import type { ChatMessage } from './types'
 
 export interface OllamaOptions {
   baseURL: string

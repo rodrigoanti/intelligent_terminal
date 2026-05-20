@@ -2,6 +2,7 @@ import React from 'react'
 import type { DragEvent } from 'react'
 import type { IconName } from '../components/ui/Icon'
 import { Icon } from '../components/ui/Icon'
+import { useT } from '@i18n/useT'
 
 export interface PaneToolbarProps {
   showReorderHandle: boolean
@@ -35,72 +36,81 @@ export const PaneToolbar: React.FC<PaneToolbarProps> = ({
   folderTitle,
   onOpenFolderInFinder,
   onPointerDown,
-}) => (
-  <div className="pane-toolbar" onMouseDown={onPointerDown}>
-    <div className="pane-toolbar__group pane-toolbar__group--start">
-      {showReorderHandle && (
-        <PaneReorderHandle
-          isGrabbed={isGrabbed}
-          onDragStart={onDragHandleStart}
-          onDragEnd={onDragHandleEnd}
-        />
-      )}
-      <PaneToolbarButton
-        icon="git-branch"
-        title="Git: estado, pull, commit y push en la carpeta de esta terminal (⌘G)"
-        aria-label="Abrir panel Git de esta terminal (⌘G)"
-        variant="git"
-        onPointerDown={onPointerDown}
-        onClick={onOpenGitPanel}
-      />
-      <PaneToolbarButton
-        icon="files"
-        title="Explorador de archivos (⌘E)"
-        aria-label="Explorador de archivos"
-        variant="files"
-        active={explorerOpen}
-        onPointerDown={onPointerDown}
-        onClick={onToggleExplorer}
-      />
-      <PaneToolbarButton
-        icon="folder"
-        title="Abrir carpeta de esta terminal en el Finder"
-        aria-label="Abrir carpeta de esta terminal en el Finder"
-        variant="folder"
-        onPointerDown={onPointerDown}
-        onClick={onOpenFolderInFinder}
-      />
-    </div>
-    <span
-      className="pane-toolbar__folder-label"
-      title={folderTitle}
-      aria-label={`Carpeta actual: ${folderLabel}`}
-    >
-      {folderLabel}
-    </span>
-    {showClosePane && (
-      <div className="pane-toolbar__group pane-toolbar__group--end">
+}) => {
+  const { t } = useT()
+  return (
+    <div className="pane-toolbar" onMouseDown={onPointerDown}>
+      <div className="pane-toolbar__group pane-toolbar__group--start">
+        {showReorderHandle && (
+          <PaneReorderHandle
+            isGrabbed={isGrabbed}
+            reorderTitle={t('paneToolbar.reorderTitle')}
+            reorderAriaLabel={t('paneToolbar.reorderAriaLabel')}
+            onDragStart={onDragHandleStart}
+            onDragEnd={onDragHandleEnd}
+          />
+        )}
         <PaneToolbarButton
-          icon="close"
-          title="Cerrar este panel"
-          aria-label="Cerrar este panel"
-          variant="close"
+          icon="git-branch"
+          title={t('paneToolbar.gitTitle')}
+          aria-label={t('paneToolbar.gitAriaLabel')}
+          variant="git"
           onPointerDown={onPointerDown}
-          onClick={onClosePane}
+          onClick={onOpenGitPanel}
+        />
+        <PaneToolbarButton
+          icon="files"
+          title={t('paneToolbar.explorerTitle')}
+          aria-label={t('paneToolbar.explorerAriaLabel')}
+          variant="files"
+          active={explorerOpen}
+          onPointerDown={onPointerDown}
+          onClick={onToggleExplorer}
+        />
+        <PaneToolbarButton
+          icon="folder"
+          title={t('paneToolbar.finderTitle')}
+          aria-label={t('paneToolbar.finderAriaLabel')}
+          variant="folder"
+          onPointerDown={onPointerDown}
+          onClick={onOpenFolderInFinder}
         />
       </div>
-    )}
-  </div>
-)
+      <span
+        className="pane-toolbar__folder-label"
+        title={folderTitle}
+        aria-label={t('paneToolbar.currentFolderAriaLabel', { folder: folderLabel })}
+      >
+        {folderLabel}
+      </span>
+      {showClosePane && (
+        <div className="pane-toolbar__group pane-toolbar__group--end">
+          <PaneToolbarButton
+            icon="close"
+            title={t('paneToolbar.closePaneTitle')}
+            aria-label={t('paneToolbar.closePaneAriaLabel')}
+            variant="close"
+            onPointerDown={onPointerDown}
+            onClick={onClosePane}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface PaneReorderHandleProps {
   isGrabbed: boolean
+  reorderTitle: string
+  reorderAriaLabel: string
   onDragStart: (e: DragEvent) => void
   onDragEnd: () => void
 }
 
 const PaneReorderHandle: React.FC<PaneReorderHandleProps> = ({
   isGrabbed,
+  reorderTitle,
+  reorderAriaLabel,
   onDragStart,
   onDragEnd,
 }) => (
@@ -109,8 +119,8 @@ const PaneReorderHandle: React.FC<PaneReorderHandleProps> = ({
     tabIndex={-1}
     draggable
     className="pane-toolbar-reorder-handle terminal-chrome-btn"
-    title="Reordenar panel"
-    aria-label="Reordenar panel"
+    title={reorderTitle}
+    aria-label={reorderAriaLabel}
     aria-grabbed={isGrabbed}
     onMouseDown={e => { e.stopPropagation() }}
     onDragStart={onDragStart}
