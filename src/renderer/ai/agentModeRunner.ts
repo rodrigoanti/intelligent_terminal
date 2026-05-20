@@ -1,6 +1,11 @@
 import type { ChatMessage } from '@ai/types'
 import { chatAI, type AiOptions } from '@ai/aiClient'
 import { extractReadBlock, extractRunBlocks, extractWriteBlocks, fallbackExtractWrites } from '@shared/agentFileProtocol'
+import {
+  filterWritesByUserIntent,
+  stripThinkingFromAgentReply,
+  userWantsFileChanges,
+} from '@shared/agentWriteGuard'
 import type { AgentShellPolicy } from '@shared/configSchema'
 
 const MAX_AGENT_ROUNDS = 8
@@ -78,6 +83,13 @@ async function buildShellFollowUp(
 /**
  * Chat con bucle de herramientas: RUN (shell), READ (archivos) y WRITE al final.
  */
+function lastUserMessageText(messages: ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return messages[i].content
+  }
+  return ''
+}
+
 export async function runChatWithAgentFileLoop(
   initialMessages: ChatMessage[],
   sessionId: string,
@@ -85,6 +97,7 @@ export async function runChatWithAgentFileLoop(
   onStreamText: (visible: string) => void,
 ): Promise<string> {
   const { shellPolicy, confirmShell, ...aiOpts } = opts
+  const userRequest = lastUserMessageText(initialMessages)
   let chain = [...initialMessages]
   const uiParts: string[] = []
   /** Quedó un READ/RUN pendiente y no hubo más rondas: el modelo no pudo contestar tras la última herramienta. */
@@ -131,7 +144,7 @@ export async function runChatWithAgentFileLoop(
     chain = [...chain, ...additions]
   }
 
-  let merged = uiParts.join('\n\n').trimEnd()
+  let merged = stripThinkingFromAgentReply(uiParts.join('\n\n').trimEnd())
   if (exitedWithPendingFollowUp) {
     merged +=
       '\n\n---\n' +
@@ -141,9 +154,8 @@ export async function runChatWithAgentFileLoop(
   }
   let { stripped, writes } = extractWriteBlocks(merged)
 
-  // Si el modelo no usó el protocolo WRITE pero sí escribió código con patrones markdown
-  // comunes (ruta + bloque, ruta como language tag, comentario de ruta), extraer igual.
-  if (writes.length === 0) {
+  // Fallback solo si el usuario pidió cambios en archivos (evita escribir ejemplos de código sueltos).
+  if (writes.length === 0 && userWantsFileChanges(userRequest)) {
     const fallback = fallbackExtractWrites(stripped)
     if (fallback.writes.length > 0) {
       stripped = fallback.stripped
@@ -151,11 +163,16 @@ export async function runChatWithAgentFileLoop(
     }
   }
 
+  const { allowed: writesToApply, rejected: blockedWrites } = filterWritesByUserIntent(
+    userRequest,
+    writes,
+  )
+
   let finalText = stripped.trimEnd()
   const applied: string[] = []
   const writeErrs: string[] = []
 
-  for (const w of writes.slice(0, MAX_WRITE_OPS)) {
+  for (const w of writesToApply.slice(0, MAX_WRITE_OPS)) {
     try {
       const r = await window.api.agentWriteFile(sessionId, w.path, w.content)
       if (r.ok) applied.push(w.path)
@@ -164,14 +181,18 @@ export async function runChatWithAgentFileLoop(
       writeErrs.push(`${w.path}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
-  if (writes.length > MAX_WRITE_OPS) {
-    writeErrs.push(`(${writes.length - MAX_WRITE_OPS} writes omitted; limit ${MAX_WRITE_OPS})`)
+  if (writesToApply.length > MAX_WRITE_OPS) {
+    writeErrs.push(`(${writesToApply.length - MAX_WRITE_OPS} writes omitted; limit ${MAX_WRITE_OPS})`)
   }
 
-  if (applied.length > 0 || writeErrs.length > 0) {
+  if (applied.length > 0 || writeErrs.length > 0 || blockedWrites.length > 0) {
     finalText += '\n\n---\n'
     if (applied.length > 0) {
       finalText += `\n_✓ Files written: ${applied.map(p => `\`${p}\``).join(', ')}_\n`
+    }
+    if (blockedWrites.length > 0) {
+      finalText +=
+        `\n_⊘ Writes blocked (not applied): ${blockedWrites.map(b => `\`${b.path}\` (${b.reason})`).join('; ')}_\n`
     }
     if (writeErrs.length > 0) {
       finalText += `\n_✗ Write errors: ${writeErrs.join('; ')}_\n`

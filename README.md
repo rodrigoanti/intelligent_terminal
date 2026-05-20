@@ -1,43 +1,91 @@
-> **Última revisión de este README:** 14 de mayo de 2026.
+# AI Terminal
 
-## Panel de IA (Ollama) — qué se envía en cada mensaje
+Terminal de escritorio (Electron) con pestañas, temas, explorador de archivos, Git y panel de IA integrado (Ollama, Anthropic, OpenAI).
 
-El chat visible en la interfaz **no** se reenvía como historial completo a Ollama. En cada envío se construye:
+## Componentes
 
-- Un mensaje **system** con: instrucciones base, carpeta de trabajo (`cwd`), listado de la raíz, contenido de `package.json` si existe, el archivo `.ai-terminal/agent.md` (hasta ~22 000 caracteres), un **resumen** de interacciones anteriores (máx. 120 entradas; cada una resume pregunta y respuesta en **≤10 palabras**), las **últimas líneas del scrollback** del terminal (hasta ~8 000 caracteres) y, si está activo el modo agente, las reglas de READ/WRITE/RUN.
-- Un único mensaje **user** con el texto que acabas de escribir (en modo “explicar selección”, el contenido seleccionado).
+### Proceso principal (`electron/`)
 
-Por eso una respuesta puede parecer “de otro contexto”: el modelo prioriza el **system** (terminal, `agent.md`, resúmenes viejos) y **no ve** los mensajes anteriores del hilo salvo lo que quedó en ese resumen. Si en el terminal o en `agent.md` hay texto largo (por ejemplo documentación de firma de código), el modelo puede enlazarse a eso aunque tu pregunta sea otra.
+| Archivo | Función |
+|---------|---------|
+| `main.ts` | Punto de entrada Electron: ventanas, PTY (`node-pty`), IPC, orquestación general. |
+| `preload.ts` | Puente seguro: expone `window.api` al renderer sin dar acceso directo a Node. |
+| `persistence.ts` | Guarda y carga sesiones, historial de chat, scrollback y log de interacciones. |
+| `projectAiContext.ts` | Recopila contexto del proyecto (cwd, árbol, git, `package.json`) para la IA. |
+| `agentMd.ts` | Lee/escribe `.ai-terminal/agent.md` (memoria fija del proyecto). |
+| `agentFileOps.ts` | Lectura y escritura de archivos bajo el cwd de la sesión (modo agente). |
+| `agentShellOps.ts` | Ejecuta comandos shell del agente con política de confirmación. |
+| `gitSessionOps.ts` | Operaciones Git (status, diff, commit, push, pull). |
+| `githubActionsOps.ts` | Consulta runs de GitHub Actions del repo. |
+| `fileExplorerOps.ts` | Lista, lee y escribe archivos del explorador lateral. |
+| `shellCwdSync.ts` | Sincroniza el cwd del terminal con el del explorador/IA. |
+| `spotifyNative.ts` | Control de reproducción Spotify (macOS). |
+| `cdRecentMd.ts` / `cdRecentCapture.ts` | Historial reciente de `cd` por sesión. |
 
-## ⚠️ Notas Importantes (actualizado)
+### Interfaz (`src/renderer/`)
 
-- **Firma de código (macOS)**: Para distribuir aplicaciones en macOS, se requiere una firma con un certificado válido de Apple. Si no se firma, podrían surgir problemas con la seguridad del sistema operativo.
+| Archivo / carpeta | Función |
+|-------------------|---------|
+| `App.tsx` | Layout principal: pestañas, splits, modales, estado global. |
+| `components/AiPanel.tsx` | Panel de chat IA: historial, envío, modo agente, streaming. |
+| `components/AiInputArea.tsx` | Campo de entrada con menciones `@archivo`. |
+| `components/AiFileMentionPopup.tsx` | Autocompletado de rutas al escribir `@`. |
+| `components/AiMessage.tsx` | Render de mensajes (texto, código, thinking). |
+| `components/SettingsModal.tsx` | Configuración: proveedor, modelo, política shell, temas. |
+| `components/GitPanelModal.tsx` | UI de Git y sugerencia de mensajes de commit con IA. |
+| `terminal/TerminalPane.tsx` | Terminal xterm.js conectado al PTY por IPC. |
+| `terminal/explorer/` | Explorador de archivos y editor CodeMirror integrado. |
+| `ai/agentModeRunner.ts` | Bucle agente con bloques de texto `READ` / `WRITE` / `RUN`. |
+| `ai/agentLoopNative.ts` | Bucle agente con tool calling nativo (Anthropic/OpenAI). |
 
-  **Solución para el problema de firma:**
-  1. **Obtén un certificado de Apple Developer** desde [Apple Developer](https://developer.apple.com/).
-  2. **Configura `electron-builder`** para usar el certificado:
-     - Asegúrate de que el certificado esté instalado en tu Keychain.
-     - Configura la opción `signingIdentity` en `electron-builder` (ejemplo: `"Apple Development: Tu Nombre (XXXXXXXXXX)"`).
-     - Puedes usar la herramienta [electron-notarize](https://github.com/electron/electron-notarize) para notarizar la aplicación después del empaquetado.
+### Clientes de IA (`src/ai/`)
 
-- **Dependencias nativas**: Asegúrate de compilar las dependencias nativas con `npm run rebuild` antes de empacar, especialmente en sistemas Windows o macOS.
+| Archivo | Función |
+|---------|---------|
+| `aiClient.ts` | Fachada: elige proveedor (Ollama / Anthropic / OpenAI). |
+| `ollamaClient.ts` | Chat streaming con Ollama, prompts del sistema, `agent.md`, modo agente. |
+| `anthropicClient.ts` | Cliente Anthropic + turnos con herramientas nativas. |
+| `openaiClient.ts` | Cliente OpenAI + turnos con herramientas nativas. |
+| `contextBuilder.ts` | Construye el system prompt con contexto rico (árbol, git, terminal…). |
+| `toolDefinitions.ts` | Definiciones de herramientas para function calling nativo. |
+| `agentTypes.ts` | Tipos compartidos del bucle agente (tool calls, resultados). |
 
-## 📦 Empaquetado (actualizado)
+### Compartido (`src/shared/`)
 
-- **Windows**: `dist/windows` (`.exe`)
-- **macOS**: `dist/mac-arm64` (`.app` para Apple Silicon) o `dist/mac` (`.app` para Intel)
-- **Linux**: `dist/linux` (`.deb`, `.rpm`)
+| Archivo | Función |
+|---------|---------|
+| `ipcChannels.ts` | Nombres de canales IPC entre main y renderer. |
+| `configSchema.ts` | Esquema y defaults de configuración de la app. |
+| `agentFileProtocol.ts` | Marcadores `<<<AI_TERMINAL_*>>>` y parsers READ/WRITE/RUN. |
+| `projectAiContext.ts` | Tipos del contexto de proyecto enviado a la IA. |
+| `gitSessionTypes.ts` | Tipos y límites para operaciones Git. |
 
-## 🛠️ Configuración Adicional
+### Otros
 
-### Ejemplo de configuración de `electron-builder` para firma de código:
-```json
-{
-  "mac": {
-    "signingHashAlgorithm": "sha256",
-    "signingIdentity": "Apple Development: Tu Nombre (XXXXXXXXXX)",
-    "entitlements": "build/entitlements.mac.plist",
-    "hardenedRuntime": true
-  }
-}
+| Ruta | Función |
+|------|---------|
+| `src/themes/` | Temas visuales del terminal y del editor. |
+| `src/i18n/` | Traducciones (es/en) con i18next. |
+| `.ai-terminal/agent.md` | Memoria del proyecto que la IA lee en cada sesión. |
+| `out/` | Build generado por `electron-vite` (no editar a mano). |
+
+## Flujo del chat con IA
+
+1. El usuario escribe en `AiPanel`.
+2. Se arma el **system prompt** (`buildChatSystemPrompt` / `contextBuilder`) con cwd, árbol, git, `agent.md`, terminal, etc.
+3. Se envían mensajes al proveedor configurado (`aiClient`).
+4. En **modo agente**, la respuesta puede incluir bloques `READ` / `WRITE` / `RUN` que el bucle ejecuta vía `window.api` → IPC → `electron/agent*`.
+
+## Instalación y uso
+
+```bash
+npm install
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+npm run dist   # empaquetado macOS
 ```

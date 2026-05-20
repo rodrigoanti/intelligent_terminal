@@ -195,9 +195,16 @@ function agentModeSystemSuffix(shellPolicy: AgentShellPolicy): string {
     '\n\n--- AGENT MODE ENABLED ---\n' +
     'You have real tools to read and write files and run shell commands under this session cwd.\n\n' +
 
-    '⚠️  CRITICAL — Files: whenever the user asks to create, modify, or fix any file, ' +
-    'ALWAYS use the WRITE block described below. ' +
-    'Showing code in a markdown ``` fence does NOT write to disk; the user cannot apply it that way. ' +
+    '**Scope (read this first):**\n' +
+    '- Act ONLY on what the user asks in their **latest** message. Do not fix unrelated files.\n' +
+    '- If the user asks a question (what/how/why) or wants an explanation, reply in text only — **no WRITE blocks**.\n' +
+    '- If the user asks to change README.md, write **only** README.md — do not touch source files (e.g. ollamaClient.ts) unless they name them.\n' +
+    '- Errors in terminal output or older turns are context only; do not repair them unless the user explicitly asks in this message.\n' +
+    '- Never put internal reasoning ("let me look at line 396…") inside a WRITE block. WRITE content must be the full valid file only.\n\n' +
+
+    '⚠️  CRITICAL — Files: when (and only when) the user explicitly asks to create or modify a named file, ' +
+    'use the WRITE block below. ' +
+    'Showing code in a markdown ``` fence does NOT write to disk. ' +
     'If you must change a file, the WRITE block is mandatory.\n\n' +
 
     '**Write / create files** — for each file use this exact block:\n' +

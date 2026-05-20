@@ -1,0 +1,9 @@
+.message-container {
+  height: 400px; /* Ajusta el alto según tus necesidades */
+  overflow-y: auto;
+}
+
+.message {
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+}

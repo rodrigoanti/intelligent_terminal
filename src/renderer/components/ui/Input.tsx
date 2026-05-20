@@ -9,6 +9,9 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
   variant?: InputVariant
 }
 
-export const Input: React.FC<InputProps> = ({ size = 'md', variant = 'default', ...rest }) => (
-  <input className={`input input--${size} input--${variant}`} {...rest} />
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ size = 'md', variant = 'default', ...rest }, ref) => (
+    <input ref={ref} className={`input input--${size} input--${variant}`} {...rest} />
+  ),
 )
+Input.displayName = 'Input'

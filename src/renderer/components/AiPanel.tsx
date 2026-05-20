@@ -16,6 +16,8 @@ import { useT } from '@i18n/useT'
 import type { AppConfig, AgentShellPolicy } from '@shared/configSchema'
 import type { ProjectAiContextForAi } from '@shared/projectAiContext'
 import { runChatWithAgentFileLoop } from '../ai/agentModeRunner'
+import { runNativeAgentLoop } from '../ai/agentLoopNative'
+import type { MentionedFile } from '@ai/ollamaClient'
 import { ConfirmTerminalModal } from './ConfirmTerminalModal'
 import { AiPanelHeader } from './AiPanelHeader'
 import { AiMessage } from './AiMessage'
@@ -27,6 +29,31 @@ import './AiPanel.css'
 const MAX_INTERACTIONS_LOG_ENTRIES = 120
 const MAX_HISTORY_MESSAGES = 20
 const MAX_HISTORY_MSG_CHARS = 4000
+
+/**
+ * Proveedores que usan tool calling nativo en modo agente.
+ * Por ahora vacío — todos usan el protocolo de texto (READ/WRITE/RUN) que es
+ * más compatible. El código nativo (agentLoopNative.ts) está listo para activarse.
+ */
+const NATIVE_TOOL_PROVIDERS = new Set<string>([])
+
+/**
+ * Extrae una lista plana de rutas de archivo a partir del texto del folder tree.
+ * El folder tree de gatherShallowFolderTree tiene líneas tipo:
+ *   "  src/components/AiPanel.tsx"
+ *   "  electron/main.ts"
+ * (con indentación variable).
+ */
+function parseFolderTreeToFileList(folderTree: string): string[] {
+  const files: string[] = []
+  for (const line of folderTree.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.endsWith('/') || trimmed.startsWith('…') || trimmed.includes('(')) continue
+    // Las rutas de archivo son líneas que no terminan en "/"
+    files.push(trimmed)
+  }
+  return files
+}
 
 function cappedInteractionsLog(prev: string[], entry: string): string[] {
   const next = [...prev, entry]
@@ -58,6 +85,7 @@ export const AiPanel: React.FC<Props> = ({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [shellPrompt, setShellPrompt] = useState<null | { cmd: string; resolve: (v: boolean) => void }>(null)
   const [chatLoaded, setChatLoaded] = useState(false)
+  const [availableFiles, setAvailableFiles] = useState<string[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const aiRequestInFlightRef = useRef(false)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
@@ -142,9 +170,18 @@ export const AiPanel: React.FC<Props> = ({
     return () => cancelAnimationFrame(id)
   }, [expanded])
 
-  const workspaceForPrompt = useCallback(async () => {
+  const workspaceForPrompt = useCallback(async (): Promise<ProjectAiContextForAi | null> => {
     try { return await window.api.getProjectAiContext(sessionId) } catch { return null }
   }, [sessionId])
+
+  /** Carga la lista de archivos para @mentions de forma lazy (no bloquea el envío). */
+  const loadAvailableFilesOnce = useCallback(async (): Promise<void> => {
+    if (availableFiles.length > 0) return
+    try {
+      const tree = await window.api.getAgentFolderTree(sessionId)
+      if (tree) setAvailableFiles(parseFolderTreeToFileList(tree))
+    } catch { /* non-critical */ }
+  }, [sessionId, availableFiles.length])
 
   const ensureAgentMd = useCallback(
     async (workspace: ProjectAiContextForAi | null, terminalContext: string, signal: AbortSignal): Promise<string | null> => {
@@ -268,15 +305,14 @@ export const AiPanel: React.FC<Props> = ({
         onThinkingToken: tok => { thinkingFull += tok; updateEntryThinking(assistantId, thinkingFull, true) },
       })
       if (config.agentMode) {
-        full = await runChatWithAgentFileLoop(
-          initialMsgs, sessionId,
-          {
-            ...baseOpts,
-            shellPolicy: config.agentShellPolicy ?? 'off',
-            confirmShell: config.agentShellPolicy === 'ask' ? confirmShell : undefined,
-          },
-          visible => updateEntry(assistantId, visible, true),
-        )
+        const agentOpts = {
+          ...baseOpts,
+          shellPolicy: config.agentShellPolicy ?? 'off' as const,
+          confirmShell: config.agentShellPolicy === 'ask' ? confirmShell : undefined,
+        }
+        full = NATIVE_TOOL_PROVIDERS.has(config.aiProvider)
+          ? await runNativeAgentLoop(initialMsgs, sessionId, agentOpts, visible => updateEntry(assistantId, visible, true))
+          : await runChatWithAgentFileLoop(initialMsgs, sessionId, agentOpts, visible => updateEntry(assistantId, visible, true))
       } else {
         await chatAI(initialMsgs, {
           ...baseOpts,
@@ -305,7 +341,7 @@ export const AiPanel: React.FC<Props> = ({
     }
   }
 
-  async function handleSend(): Promise<void> {
+  async function handleSend(mentionedFiles: MentionedFile[] = []): Promise<void> {
     const text = input.trim()
     if (!text) return
     if (aiRequestInFlightRef.current) return
@@ -333,6 +369,7 @@ export const AiPanel: React.FC<Props> = ({
       const systemContent = buildChatSystemPrompt(
         getTerminalContextRef.current(), workspace, agentMd,
         config.agentMode ?? false, config.agentShellPolicy ?? 'off', interactionsLog,
+        mentionedFiles,
       )
       const history: ChatMessage[] = [
         { role: 'system', content: systemContent },
@@ -346,15 +383,14 @@ export const AiPanel: React.FC<Props> = ({
         onThinkingToken: tok => { thinkingFull += tok; updateEntryThinking(assistantId, thinkingFull, true) },
       })
       if (config.agentMode) {
-        full = await runChatWithAgentFileLoop(
-          history, sessionId,
-          {
-            ...baseOpts,
-            shellPolicy: config.agentShellPolicy ?? 'off',
-            confirmShell: config.agentShellPolicy === 'ask' ? confirmShell : undefined,
-          },
-          visible => updateEntry(assistantId, visible, true),
-        )
+        const agentOpts = {
+          ...baseOpts,
+          shellPolicy: config.agentShellPolicy ?? 'off' as const,
+          confirmShell: config.agentShellPolicy === 'ask' ? confirmShell : undefined,
+        }
+        full = NATIVE_TOOL_PROVIDERS.has(config.aiProvider)
+          ? await runNativeAgentLoop(history, sessionId, agentOpts, visible => updateEntry(assistantId, visible, true))
+          : await runChatWithAgentFileLoop(history, sessionId, agentOpts, visible => updateEntry(assistantId, visible, true))
       } else {
         await chatAI(history, {
           ...baseOpts,
@@ -369,6 +405,7 @@ export const AiPanel: React.FC<Props> = ({
       }
     } catch (e: unknown) {
       if ((e as Error).name !== 'AbortError') {
+        console.error('[AiPanel] handleSend error:', e)
         setError(t('ai.connectError', { provider: config.aiProvider, message: (e as Error).message }))
         if (assistantId) updateEntry(assistantId, t('ai.noResponse'), false)
       }
@@ -448,8 +485,11 @@ export const AiPanel: React.FC<Props> = ({
             <AiInputArea
               value={input}
               loading={loading}
+              sessionId={sessionId}
+              availableFiles={availableFiles}
+              onRequestFiles={loadAvailableFilesOnce}
               onChange={setInput}
-              onSend={() => void handleSend()}
+              onSend={mentionedFiles => void handleSend(mentionedFiles)}
               onStop={handleStop}
               onKeyDown={handleKeyDown}
               inputRef={inputRef}
