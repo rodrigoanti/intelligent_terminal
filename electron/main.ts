@@ -38,7 +38,8 @@ import {
 } from './persistence'
 import { gatherProjectAiContextForCwd } from './projectAiContext'
 import { readAgentMdForCwd, writeAgentMdForCwd, gatherShallowFolderTree } from './agentMd'
-import { readProjectFile, writeProjectFile } from './agentFileOps'
+import { applyProjectPatch, readProjectFile, readProjectFileLines, writeProjectFile } from './agentFileOps'
+import type { PatchHunk } from './agentFileOps'
 import { runAgentShellCommand } from './agentShellOps'
 import {
   gitCommit,
@@ -339,13 +340,27 @@ function registerIpc(): void {
     return gatherShallowFolderTree(projectRootForSession(sessionId))
   })
 
-  ipcMain.handle(IPC.AGENT_FILE_READ, (_e, sessionId: string, relPath: string) => {
-    return readProjectFile(projectRootForSession(sessionId), relPath)
-  })
+  ipcMain.handle(
+    IPC.AGENT_FILE_READ,
+    (_e, sessionId: string, relPath: string, startLine?: number, endLine?: number) => {
+      const root = projectRootForSession(sessionId)
+      if (typeof startLine === 'number' && typeof endLine === 'number') {
+        return readProjectFileLines(root, relPath, { startLine, endLine })
+      }
+      return readProjectFile(root, relPath)
+    },
+  )
 
   ipcMain.handle(IPC.AGENT_FILE_WRITE, (_e, sessionId: string, relPath: string, content: string) => {
     return writeProjectFile(projectRootForSession(sessionId), relPath, content)
   })
+
+  ipcMain.handle(
+    IPC.AGENT_FILE_PATCH,
+    (_e, sessionId: string, relPath: string, hunks: PatchHunk[]) => {
+      return applyProjectPatch(projectRootForSession(sessionId), relPath, hunks)
+    },
+  )
 
   ipcMain.handle(IPC.AGENT_SHELL_RUN, (_e, sessionId: string, command: string) => {
     return runAgentShellCommand(projectRootForSession(sessionId), command)

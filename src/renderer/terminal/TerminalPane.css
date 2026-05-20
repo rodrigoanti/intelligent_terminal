@@ -29,6 +29,16 @@
   overflow: hidden;
   font-size: calc(12px * var(--terminal-pane-ai-chat-zoom, 1));
   pointer-events: none;
+  /*
+   * CRÍTICO — fondo opaco + isolation.
+   * Sin background, el compositor de Chromium/Electron mezcla este overlay con el canvas
+   * WebGL de xterm. Cuando hay re-renders frecuentes (streaming) o nuevas capas GPU
+   * (animaciones CSS con transform/opacity), el bitmap del canvas queda en negro.
+   * Con fondo sólido el compositor no necesita ver a través del dock hacia el canvas.
+   * KNOWN_ISSUES.md §1.
+   */
+  background: var(--bg);
+  isolation: isolate;
 }
 
 .terminal-pane-ai-dock--collapsed {

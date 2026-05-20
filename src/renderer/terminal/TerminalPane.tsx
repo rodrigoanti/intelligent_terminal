@@ -777,7 +777,6 @@ export const TerminalPane: React.FC<Props> = ({
         }
       })
     }
-
     // Cargar scrollback persistido antes del primer output del PTY
     void window.api.loadScrollback(sessionId).then(saved => {
       if (!termAlive || !saved) return
@@ -1261,6 +1260,10 @@ export const TerminalPane: React.FC<Props> = ({
           onMouseDown={e => {
             onRequestPaneFocusRef.current?.()
             if ((e.target as HTMLElement).closest('button')) return
+            if (aiExpanded) {
+              collapseAiPanel()
+              return
+            }
             termRef.current?.focus()
           }}
         >

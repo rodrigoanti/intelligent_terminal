@@ -10,9 +10,12 @@ interface AiPanelHeaderProps {
   config: AppConfig
   expanded: boolean
   hasMessages: boolean
+  loopActive: boolean
   onToggleExpand: () => void
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void
   onAgentToggle: (e: React.MouseEvent) => void
+  onLoopToggle: (e: React.MouseEvent) => void
+  onLoopStop: (e: React.MouseEvent) => void
   onThinkToggle: (e: React.MouseEvent) => void
   onShellPolicyChange: (policy: AgentShellPolicy) => void
   onDeleteHistory: (e: React.MouseEvent) => void
@@ -23,9 +26,12 @@ export const AiPanelHeader: React.FC<AiPanelHeaderProps> = ({
   config,
   expanded,
   hasMessages,
+  loopActive,
   onToggleExpand,
   onKeyDown,
   onAgentToggle,
+  onLoopToggle,
+  onLoopStop,
   onThinkToggle,
   onShellPolicyChange,
   onDeleteHistory,
@@ -53,8 +59,11 @@ export const AiPanelHeader: React.FC<AiPanelHeaderProps> = ({
             <AiPanelActions
               config={config}
               hasMessages={hasMessages}
+              loopActive={loopActive}
               canConfigPatch={canConfigPatch}
               onAgentToggle={onAgentToggle}
+              onLoopToggle={onLoopToggle}
+              onLoopStop={onLoopStop}
               onThinkToggle={onThinkToggle}
               onShellPolicyChange={onShellPolicyChange}
               onDeleteHistory={onDeleteHistory}
@@ -82,8 +91,11 @@ const AiPanelTitle: React.FC<AiPanelTitleProps> = ({ modelName, panelTitle }) =>
 interface AiPanelActionsProps {
   config: AppConfig
   hasMessages: boolean
+  loopActive: boolean
   canConfigPatch: boolean
   onAgentToggle: (e: React.MouseEvent) => void
+  onLoopToggle: (e: React.MouseEvent) => void
+  onLoopStop: (e: React.MouseEvent) => void
   onThinkToggle: (e: React.MouseEvent) => void
   onShellPolicyChange: (policy: AgentShellPolicy) => void
   onDeleteHistory: (e: React.MouseEvent) => void
@@ -92,57 +104,90 @@ interface AiPanelActionsProps {
 const AiPanelActions: React.FC<AiPanelActionsProps> = ({
   config,
   hasMessages,
+  loopActive,
   canConfigPatch,
   onAgentToggle,
+  onLoopToggle,
+  onLoopStop,
   onThinkToggle,
   onShellPolicyChange,
   onDeleteHistory,
 }) => {
   const { t } = useT()
+  const agentOn = config.agentMode === true
+
   return (
     <div className="ai-panel-actions">
-      <Toggle
-        checked={config.agentMode === true}
-        onChange={() => {}}
-        label={t('ai.agentLabel')}
-        disabled={!canConfigPatch}
-        title={t('ai.agentTitle')}
-        onClick={onAgentToggle}
-        onKeyDown={e => e.stopPropagation()}
-      />
+      <div className="ai-panel-actions__group">
+        <Toggle
+          checked={agentOn}
+          onChange={() => {}}
+          label={t('ai.agentLabel')}
+          disabled={!canConfigPatch}
+          title={t('ai.agentTitle')}
+          onClick={onAgentToggle}
+          onKeyDown={e => e.stopPropagation()}
+        />
 
-      <Select
-        size="sm"
-        aria-label={t('ai.shellPolicyAriaLabel')}
-        title={!config.agentMode ? t('ai.shellPolicyTitleOff') : t('ai.shellPolicyTitleOn')}
-        value={config.agentShellPolicy ?? 'off'}
-        disabled={!canConfigPatch || !config.agentMode}
-        onClick={e => e.stopPropagation()}
-        onMouseDown={e => e.stopPropagation()}
-        onKeyDown={e => e.stopPropagation()}
-        onChange={e => {
-          e.stopPropagation()
-          onShellPolicyChange(e.target.value as AgentShellPolicy)
-        }}
-      >
-        <option value="off">{t('ai.shellNo')}</option>
-        <option value="ask">{t('ai.shellAsk')}</option>
-        <option value="always">{t('ai.shellAlways')}</option>
-      </Select>
+        <Toggle
+          checked={config.agentLoop === true}
+          onChange={() => {}}
+          label={t('ai.loopLabel')}
+          disabled={!canConfigPatch || !agentOn}
+          title={t('ai.loopTitle')}
+          onClick={onLoopToggle}
+          onKeyDown={e => e.stopPropagation()}
+        />
 
-      <Toggle
-        checked={config.thinkingMode === true}
-        onChange={() => {}}
-        label={t('ai.thinkLabel')}
-        disabled={!canConfigPatch}
-        title={t('ai.thinkTitle')}
-        onClick={onThinkToggle}
-        onKeyDown={e => e.stopPropagation()}
-      />
+        <div className="ai-panel-actions__shell">
+          <Select
+            size="sm"
+            aria-label={t('ai.shellPolicyAriaLabel')}
+            title={!agentOn ? t('ai.shellPolicyTitleOff') : t('ai.shellPolicyTitleOn')}
+            value={config.agentShellPolicy ?? 'off'}
+            disabled={!canConfigPatch || !agentOn}
+            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
+            onKeyDown={e => e.stopPropagation()}
+            onChange={e => {
+              e.stopPropagation()
+              onShellPolicyChange(e.target.value as AgentShellPolicy)
+            }}
+          >
+            <option value="off">{t('ai.shellNo')}</option>
+            <option value="ask">{t('ai.shellAsk')}</option>
+            <option value="always">{t('ai.shellAlways')}</option>
+          </Select>
+        </div>
 
-      {hasMessages && (
-        <AiDeleteHistoryButton title={t('ai.deleteHistoryTitle')} onClick={onDeleteHistory} />
-      )}
+        <Toggle
+          checked={config.thinkingMode === true}
+          onChange={() => {}}
+          label={t('ai.thinkLabel')}
+          disabled={!canConfigPatch}
+          title={t('ai.thinkTitle')}
+          onClick={onThinkToggle}
+          onKeyDown={e => e.stopPropagation()}
+        />
+      </div>
+
+      <div className="ai-panel-actions__group ai-panel-actions__group--end">
+        {loopActive && (
+          <button
+            type="button"
+            className="ai-panel-loop-stop"
+            onClick={e => { e.stopPropagation(); onLoopStop(e) }}
+            title={t('ai.loopStopTitle')}
+          >
+            <span className="ai-panel-loop-stop__icon" aria-hidden="true">■</span>
+            <span>{t('ai.loopStop')}</span>
+          </button>
+        )}
+
+        {hasMessages && (
+          <AiDeleteHistoryButton title={t('ai.deleteHistoryTitle')} onClick={onDeleteHistory} />
+        )}
+      </div>
     </div>
   )
 }

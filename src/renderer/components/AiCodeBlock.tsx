@@ -1,4 +1,12 @@
-import React from 'react'
+import React, { useState } from 'react'
+
+const SHELL_LANGS = new Set([
+  'bash', 'sh', 'zsh', 'shell', 'console', 'terminal', 'fish', 'ksh', 'csh',
+])
+
+function isShellLang(lang: string): boolean {
+  return SHELL_LANGS.has(lang.trim().toLowerCase())
+}
 
 interface AiCodeBlockProps {
   lang: string
@@ -14,24 +22,45 @@ export const AiCodeBlock: React.FC<AiCodeBlockProps> = ({
   isStreaming,
   isLastSegment,
   onInsert,
-}) => (
-  <div className="ai-code-block">
-    <div className="ai-code-chrome" aria-hidden="true">
-      <span className="ai-code-lang">{lang.trim() || 'text'}</span>
+}) => {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy(): void {
+    void navigator.clipboard.writeText(content).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
+  return (
+    <div className="ai-code-block">
+      <div className="ai-code-chrome" aria-hidden="true">
+        <span className="ai-code-lang">{lang.trim() || 'text'}</span>
+        {!isStreaming && (
+          <button
+            type="button"
+            className="ai-copy-btn"
+            title="Copiar código"
+            onClick={handleCopy}
+          >
+            {copied ? '✓' : '⧉'}
+          </button>
+        )}
+      </div>
+      <pre className="ai-code-pre">
+        {content}
+        {isStreaming && isLastSegment && <span className="ai-cursor">▌</span>}
+      </pre>
+      {!isStreaming && isShellLang(lang) && (
+        <button
+          type="button"
+          className="ai-insert-btn"
+          title="Ctrl+U + pegar en terminal (sin Enter)"
+          onClick={() => onInsert(content)}
+        >
+          ↵ poner en terminal
+        </button>
+      )}
     </div>
-    <pre className="ai-code-pre">
-      {content}
-      {isStreaming && isLastSegment && <span className="ai-cursor">▌</span>}
-    </pre>
-    {!isStreaming && (
-      <button
-        type="button"
-        className="ai-insert-btn"
-        title="Ctrl+U + pegar en terminal (sin Enter)"
-        onClick={() => onInsert(content)}
-      >
-        ↵ poner en terminal
-      </button>
-    )}
-  </div>
-)
+  )
+}

@@ -88,12 +88,17 @@ export const AiPanel: React.FC<Props> = ({
   const [availableFiles, setAvailableFiles] = useState<string[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const aiRequestInFlightRef = useRef(false)
+  const loopActiveRef = useRef(false)
+  const loopTaskRef = useRef<{ text: string; mentionedFiles: MentionedFile[] } | null>(null)
+  const messagesRef = useRef(messages)
+  const [loopActive, setLoopActive] = useState(false)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const prevExpandedRef = useRef<boolean | null>(null)
   const chatSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const getTerminalContextRef = useRef(getTerminalContext)
   getTerminalContextRef.current = getTerminalContext
+  messagesRef.current = messages
 
   const confirmShell = useCallback((cmd: string) => {
     return new Promise<boolean>(resolve => {
@@ -256,18 +261,38 @@ export const AiPanel: React.FC<Props> = ({
     })
   }, [messages])
 
+  useEffect(() => {
+    if (!expanded) return
+    requestAnimationFrame(() => {
+      const el = messagesScrollRef.current
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
+    })
+  }, [expanded])
+
   function addEntry(role: AiMessageEntry['role'], content: string, isStreaming = false): string {
     const id = crypto.randomUUID()
-    setMessages(prev => [...prev, { id, role, content, isStreaming }])
+    setMessages(prev => {
+      const next = [...prev, { id, role, content, isStreaming }]
+      messagesRef.current = next
+      return next
+    })
     return id
   }
 
   function updateEntry(id: string, content: string, isStreaming = false): void {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, content, isStreaming } : m))
+    setMessages(prev => {
+      const next = prev.map(m => m.id === id ? { ...m, content, isStreaming } : m)
+      messagesRef.current = next
+      return next
+    })
   }
 
   function updateEntryThinking(id: string, thinking: string, thinkingStreaming = false): void {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, thinking, thinkingStreaming } : m))
+    setMessages(prev => {
+      const next = prev.map(m => m.id === id ? { ...m, thinking, thinkingStreaming } : m)
+      messagesRef.current = next
+      return next
+    })
   }
 
   async function runExplain(text: string): Promise<void> {
@@ -313,6 +338,7 @@ export const AiPanel: React.FC<Props> = ({
         full = NATIVE_TOOL_PROVIDERS.has(config.aiProvider)
           ? await runNativeAgentLoop(initialMsgs, sessionId, agentOpts, visible => updateEntry(assistantId, visible, true))
           : await runChatWithAgentFileLoop(initialMsgs, sessionId, agentOpts, visible => updateEntry(assistantId, visible, true))
+        if (!full) full = t('ai.agentDone')
       } else {
         await chatAI(initialMsgs, {
           ...baseOpts,
@@ -341,17 +367,17 @@ export const AiPanel: React.FC<Props> = ({
     }
   }
 
-  async function handleSend(mentionedFiles: MentionedFile[] = []): Promise<void> {
-    const text = input.trim()
-    if (!text) return
-    if (aiRequestInFlightRef.current) return
-    aiRequestInFlightRef.current = true
-    setLoading(true)
-    setError(null)
+  type TurnResult = 'ok' | 'aborted' | 'error'
+
+  async function executeChatTurn(
+    text: string,
+    mentionedFiles: MentionedFile[],
+    options: { addUserBubble: boolean; isLoopIteration: boolean },
+  ): Promise<TurnResult> {
     let assistantId = ''
     try {
       const workspace = await workspaceForPrompt()
-      const historyMsgs: ChatMessage[] = messages
+      const historyMsgs: ChatMessage[] = messagesRef.current
         .filter(m => !m.isStreaming)
         .slice(-MAX_HISTORY_MESSAGES)
         .map(m => ({
@@ -360,21 +386,23 @@ export const AiPanel: React.FC<Props> = ({
             ? m.content.slice(0, MAX_HISTORY_MSG_CHARS) + '\n…[truncated]'
             : m.content,
         }))
-      setInput('')
-      addEntry('user', text)
+      if (options.addUserBubble) addEntry('user', text)
       assistantId = addEntry('assistant', '…', true)
       const ctrl = new AbortController()
       abortRef.current = ctrl
+      const userApiContent = options.isLoopIteration
+        ? t('ai.loopContinue', { task: text })
+        : text
       const agentMd = await ensureAgentMd(workspace, getTerminalContextRef.current(), ctrl.signal)
       const systemContent = buildChatSystemPrompt(
         getTerminalContextRef.current(), workspace, agentMd,
         config.agentMode ?? false, config.agentShellPolicy ?? 'off', interactionsLog,
-        mentionedFiles,
+        options.isLoopIteration ? [] : mentionedFiles,
       )
       const history: ChatMessage[] = [
         { role: 'system', content: systemContent },
         ...historyMsgs,
-        { role: 'user', content: text },
+        { role: 'user', content: userApiContent },
       ]
       let full = ''
       let thinkingFull = ''
@@ -391,6 +419,7 @@ export const AiPanel: React.FC<Props> = ({
         full = NATIVE_TOOL_PROVIDERS.has(config.aiProvider)
           ? await runNativeAgentLoop(history, sessionId, agentOpts, visible => updateEntry(assistantId, visible, true))
           : await runChatWithAgentFileLoop(history, sessionId, agentOpts, visible => updateEntry(assistantId, visible, true))
+        if (!full) full = t('ai.agentDone')
       } else {
         await chatAI(history, {
           ...baseOpts,
@@ -403,20 +432,62 @@ export const AiPanel: React.FC<Props> = ({
         scheduleInteractionLogUpdate(text, full)
         scheduleAgentMdRefreshAfterTurn(agentMd ?? null, workspace, text, full)
       }
+      return 'ok'
     } catch (e: unknown) {
-      if ((e as Error).name !== 'AbortError') {
-        console.error('[AiPanel] handleSend error:', e)
-        setError(t('ai.connectError', { provider: config.aiProvider, message: (e as Error).message }))
-        if (assistantId) updateEntry(assistantId, t('ai.noResponse'), false)
+      if ((e as Error).name === 'AbortError') return 'aborted'
+      console.error('[AiPanel] executeChatTurn error:', e)
+      setError(t('ai.connectError', { provider: config.aiProvider, message: (e as Error).message }))
+      if (assistantId) updateEntry(assistantId, t('ai.noResponse'), false)
+      return 'error'
+    } finally {
+      if (assistantId) {
+        setMessages(prev => {
+          const next = prev.map(m =>
+            m.id === assistantId && m.isStreaming
+              ? { ...m, isStreaming: false, thinkingStreaming: false }
+              : m,
+          )
+          messagesRef.current = next
+          return next
+        })
+      }
+    }
+  }
+
+  async function handleSend(mentionedFiles: MentionedFile[] = []): Promise<void> {
+    const text = input.trim()
+    if (!text) return
+    if (aiRequestInFlightRef.current) return
+
+    const startLoop = (config.agentLoop ?? false) && (config.agentMode ?? false)
+    if (startLoop) {
+      loopTaskRef.current = { text, mentionedFiles }
+      loopActiveRef.current = true
+      setLoopActive(true)
+    }
+
+    aiRequestInFlightRef.current = true
+    setLoading(true)
+    setError(null)
+    setInput('')
+
+    let isFirst = true
+    try {
+      while (true) {
+        const task = loopTaskRef.current ?? { text, mentionedFiles }
+        const result = await executeChatTurn(task.text, task.mentionedFiles, {
+          addUserBubble: isFirst,
+          isLoopIteration: !isFirst,
+        })
+        isFirst = false
+        if (result !== 'ok' || !loopActiveRef.current) break
       }
     } finally {
       aiRequestInFlightRef.current = false
       setLoading(false)
-      if (assistantId) {
-        setMessages(prev =>
-          prev.map(m => m.id === assistantId && m.isStreaming ? { ...m, isStreaming: false, thinkingStreaming: false } : m),
-        )
-      }
+      loopActiveRef.current = false
+      setLoopActive(false)
+      loopTaskRef.current = null
     }
   }
 
@@ -425,6 +496,9 @@ export const AiPanel: React.FC<Props> = ({
   }
 
   function handleStop(): void {
+    loopActiveRef.current = false
+    setLoopActive(false)
+    loopTaskRef.current = null
     abortRef.current?.abort()
     setLoading(false)
   }
@@ -457,10 +531,23 @@ export const AiPanel: React.FC<Props> = ({
           config={config}
           expanded={expanded}
           hasMessages={messages.length > 0}
+          loopActive={loopActive}
           onToggleExpand={handleChromeToggle}
           onKeyDown={handleHeaderKeyDown}
           canConfigPatch={!!onConfigPatch}
-          onAgentToggle={e => { e.stopPropagation(); void onConfigPatch?.({ agentMode: !config.agentMode }) }}
+          onAgentToggle={e => {
+            e.stopPropagation()
+            const next = !config.agentMode
+            void onConfigPatch?.(next ? { agentMode: true } : { agentMode: false, agentLoop: false })
+            if (!next) handleStop()
+          }}
+          onLoopToggle={e => {
+            e.stopPropagation()
+            const next = !config.agentLoop
+            void onConfigPatch?.({ agentLoop: next })
+            if (!next) handleStop()
+          }}
+          onLoopStop={e => { e.stopPropagation(); handleStop() }}
           onThinkToggle={e => { e.stopPropagation(); void onConfigPatch?.({ thinkingMode: !config.thinkingMode }) }}
           onShellPolicyChange={policy => { void onConfigPatch?.({ agentShellPolicy: policy }) }}
           onDeleteHistory={e => { e.stopPropagation(); handleDeleteHistory() }}

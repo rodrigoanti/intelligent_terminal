@@ -2,6 +2,15 @@ import type { ProjectAiContextForAi } from '@shared/projectAiContext'
 import type { AgentShellPolicy } from '@shared/configSchema'
 import { GIT_MAX_COMMIT_MESSAGE_CHARS } from '@shared/gitSessionTypes'
 import {
+  GIT_BLOCK_END,
+  GIT_BLOCK_START,
+  GLOB_BLOCK_END,
+  GLOB_BLOCK_START,
+  GREP_BLOCK_END,
+  GREP_BLOCK_START,
+  LIST_BLOCK_END,
+  LIST_BLOCK_START,
+  PATCH_BLOCK_END,
   READ_BLOCK_END,
   READ_BLOCK_START,
   RUN_BLOCK_END,
@@ -202,7 +211,24 @@ function agentModeSystemSuffix(shellPolicy: AgentShellPolicy): string {
     '- Errors in terminal output or older turns are context only; do not repair them unless the user explicitly asks in this message.\n' +
     '- Never put internal reasoning ("let me look at line 396…") inside a WRITE block. WRITE content must be the full valid file only.\n\n' +
 
-    '⚠️  CRITICAL — Files: when (and only when) the user explicitly asks to create or modify a named file, ' +
+    '**Explore before you act** — find files yourself from the user\'s latest message:\n' +
+    '1. Folder tree = map. 2. LIST/GLOB/GREP to locate files. 3. READ (or READ lines). 4. PATCH or WRITE.\n' +
+    'Derive search terms from the request (symbols, errors, paths mentioned). Never guess file contents.\n\n' +
+
+    `**List directory** — ${LIST_BLOCK_START}\nsrc/ai\nsrc/renderer\n${LIST_BLOCK_END}\n` +
+    `**Find files by name** — ${GLOB_BLOCK_START}\n**/*Panel*.tsx\n*.md\n${GLOB_BLOCK_END}\n` +
+    `**Search in file contents** — ${GREP_BLOCK_START}\npattern :: optional/scope\n${GREP_BLOCK_END}\n` +
+    `**Git** — ${GIT_BLOCK_START}\nstatus\n${GIT_BLOCK_END} or diff / diff-staged then optional paths per line\n` +
+
+    '**Read files** — at END of message before edits. Full file or line range:\n' +
+    `${READ_BLOCK_START}\npath/to/file.ts\npath/to/big.ts:10-80\n${READ_BLOCK_END}\n` +
+
+    '**Patch (preferred for edits)** — exact search/replace; read the file first:\n' +
+    '<<<AI_TERMINAL_PATCH path="path/to/file.ts">>>\n' +
+    '<<<< SEARCH\nold lines\n====\nnew lines\n>>>> REPLACE\n' +
+    `${PATCH_BLOCK_END}\n` +
+
+    '⚠️  CRITICAL — Full-file replace: when (and only when) the user explicitly asks to create or modify a named file, ' +
     'use the WRITE block below. ' +
     'Showing code in a markdown ``` fence does NOT write to disk. ' +
     'If you must change a file, the WRITE block is mandatory.\n\n' +
@@ -221,17 +247,7 @@ function agentModeSystemSuffix(shellPolicy: AgentShellPolicy): string {
     '}\n' +
     '<<<END_AI_TERMINAL_WRITE>>>\n\n' +
 
-    '**Reading files** — MANDATORY: whenever you will modify or create a file, ' +
-    'first read it (or confirm its current contents) using a READ block at the END of your reply. ' +
-    'NEVER assume file contents without reading; “missing file” errors ' +
-    'usually come from assuming project layout without verifying. ' +
-    'If the user asks to update README or another existing file, read it before writing.\n' +
-    'Syntax:\n' +
-    `${READ_BLOCK_START}\n` +
-    'relative/path/file.ts\n' +
-    'other/file.tsx\n' +
-    `${READ_BLOCK_END}\n` +
-    'You will receive contents on the next turn. Then reply with the appropriate WRITE blocks.\n' +
+    'Prefer PATCH over WRITE for small edits. WRITE only for new files or full rewrites.\n' +
     agentModeShellSuffix(shellPolicy)
   )
 }

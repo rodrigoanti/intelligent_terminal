@@ -46,6 +46,8 @@ export const IPC = {
   AGENT_FILE_READ: 'agentFile:read',
   /** Renderer → main (invoke): escribir archivo relativo al cwd de la sesión (modo agente) */
   AGENT_FILE_WRITE: 'agentFile:write',
+  /** Renderer → main (invoke): parche search/replace en un archivo (modo agente) */
+  AGENT_FILE_PATCH: 'agentFile:patch',
   /** Renderer → main (invoke): ejecutar una línea de shell en el cwd de la sesión (modo agente) */
   AGENT_SHELL_RUN: 'agentShell:run',
 

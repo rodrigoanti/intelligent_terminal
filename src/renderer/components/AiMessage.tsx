@@ -1,28 +1,42 @@
 import React from 'react'
 import { useT } from '@i18n/useT'
 import { AiCodeBlock } from './AiCodeBlock'
+import { AiMarkdown } from './AiMarkdown'
 import { AiThinkingBlock } from './AiThinkingBlock'
+import { AiAgentActionSegment } from './AiAgentActions'
+import { AiAgentRunGroup } from './AiAgentRunGroup'
+import { AiErrorBoundary } from './AiErrorBoundary'
+import { parseAssistantContent, type AssistantSegment } from './ai/parseAssistantContent'
 
-type Segment =
-  | { type: 'text'; content: string }
-  | { type: 'code'; lang: string; content: string }
+type ActionSegment = Exclude<AssistantSegment, { type: 'text' } | { type: 'code' }>
 
-function parseSegments(raw: string): Segment[] {
-  const segments: Segment[] = []
-  const re = /```([^\n`]*)\n?([\s\S]*?)```/g
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(raw)) !== null) {
-    if (m.index > last) {
-      segments.push({ type: 'text', content: raw.slice(last, m.index) })
+type RenderUnit =
+  | { kind: 'segment'; segment: AssistantSegment; key: string }
+  | { kind: 'action-group'; segments: ActionSegment[]; key: string }
+
+function isActionSegment(seg: AssistantSegment): seg is ActionSegment {
+  return seg.type !== 'text' && seg.type !== 'code'
+}
+
+function buildRenderUnits(segments: AssistantSegment[]): RenderUnit[] {
+  const units: RenderUnit[] = []
+  let i = 0
+  while (i < segments.length) {
+    const seg = segments[i]
+    if (!isActionSegment(seg)) {
+      units.push({ kind: 'segment', segment: seg, key: `s-${i}` })
+      i++
+      continue
     }
-    segments.push({ type: 'code', lang: m[1].trim(), content: m[2].trimEnd() })
-    last = m.index + m[0].length
+    const group: ActionSegment[] = []
+    const start = i
+    while (i < segments.length && isActionSegment(segments[i])) {
+      group.push(segments[i] as ActionSegment)
+      i++
+    }
+    units.push({ kind: 'action-group', segments: group, key: `g-${start}` })
   }
-  if (last < raw.length) {
-    segments.push({ type: 'text', content: raw.slice(last) })
-  }
-  return segments
+  return units
 }
 
 interface AiAssistantContentProps {
@@ -40,31 +54,58 @@ export const AiAssistantContent: React.FC<AiAssistantContentProps> = ({
   isStreaming,
   onInsert,
 }) => {
-  const segments = parseSegments(content)
+  const units = buildRenderUnits(parseAssistantContent(content))
+
   return (
     <>
       {thinking && (
         <AiThinkingBlock content={thinking} isStreaming={!!thinkingStreaming} />
       )}
-      {segments.map((seg, i) => {
-        const isLastSegment = i === segments.length - 1
+      {units.map((unit, unitIdx) => {
+        if (unit.kind === 'action-group') {
+          return (
+            <AiAgentRunGroup
+              key={unit.key}
+              segments={unit.segments}
+              isStreaming={isStreaming}
+            />
+          )
+        }
+
+        const seg = unit.segment
+        const isLastUnit = unitIdx === units.length - 1
+
         if (seg.type === 'code') {
           return (
             <AiCodeBlock
-              key={i}
+              key={unit.key}
               lang={seg.lang}
               content={seg.content}
               isStreaming={isStreaming}
-              isLastSegment={isLastSegment}
+              isLastSegment={isLastUnit}
               onInsert={onInsert}
             />
           )
         }
+
+        if (seg.type !== 'text') {
+          return (
+            <AiAgentActionSegment
+              key={unit.key}
+              segment={seg}
+              isStreaming={isStreaming}
+            />
+          )
+        }
+
+        if (!seg.content.trim()) return null
+
         return (
-          <pre key={i} className="ai-msg-pre">
-            {seg.content}
-            {isStreaming && isLastSegment && <span className="ai-cursor">▌</span>}
-          </pre>
+          <AiMarkdown
+            key={unit.key}
+            content={seg.content}
+            showCursor={isStreaming && isLastUnit}
+          />
         )
       })}
     </>
@@ -102,25 +143,27 @@ interface AiMessageProps {
 export const AiMessage: React.FC<AiMessageProps> = ({ message, onInsert }) => {
   const { t } = useT()
   return (
-  <div
-    className={`ai-msg ai-msg--${message.role}`}
-    aria-label={message.role === 'user' ? t('ai.userAriaLabel') : t('ai.assistantAriaLabel')}
-  >
-    <div className="ai-msg-bubble">
-      <div className="ai-msg-content">
-        {message.role === 'assistant' ? (
-          <AiAssistantContent
-            content={message.content}
-            thinking={message.thinking}
-            thinkingStreaming={message.thinkingStreaming}
-            isStreaming={!!message.isStreaming}
-            onInsert={onInsert}
-          />
-        ) : (
-          <AiUserContent content={message.content} isStreaming={!!message.isStreaming} />
-        )}
+    <div
+      className={`ai-msg ai-msg--${message.role}`}
+      aria-label={message.role === 'user' ? t('ai.userAriaLabel') : t('ai.assistantAriaLabel')}
+    >
+      <div className="ai-msg-bubble">
+        <div className="ai-msg-content">
+          <AiErrorBoundary>
+            {message.role === 'assistant' ? (
+              <AiAssistantContent
+                content={message.content}
+                thinking={message.thinking}
+                thinkingStreaming={message.thinkingStreaming}
+                isStreaming={!!message.isStreaming}
+                onInsert={onInsert}
+              />
+            ) : (
+              <AiUserContent content={message.content} isStreaming={!!message.isStreaming} />
+            )}
+          </AiErrorBoundary>
+        </div>
       </div>
     </div>
-  </div>
   )
 }

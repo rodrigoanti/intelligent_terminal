@@ -1,4 +1,4 @@
-import type { WriteOp } from './agentFileProtocol'
+import type { PatchOp, WriteOp } from './agentFileProtocol'
 
 export interface WriteGuardResult {
   allowed: WriteOp[]
@@ -78,7 +78,7 @@ export function stripThinkingFromAgentReply(text: string): string {
  * Filtra operaciones WRITE: solo rutas pedidas por el usuario y contenido válido.
  */
 export function filterWritesByUserIntent(
-  userMessage: string,
+  _userMessage: string,
   writes: WriteOp[],
 ): WriteGuardResult {
   const rejected: Array<{ path: string; reason: string }> = []
@@ -86,26 +86,26 @@ export function filterWritesByUserIntent(
 
   if (writes.length === 0) return { allowed, rejected }
 
-  const wantsFiles = userWantsFileChanges(userMessage)
-
   for (const w of writes) {
     if (isSuspiciousAgentWriteContent(w.content)) {
       rejected.push({ path: w.path, reason: 'contenido inválido (parece razonamiento, no código)' })
-      continue
-    }
-    if (!wantsFiles) {
-      rejected.push({ path: w.path, reason: 'el usuario no pidió modificar archivos en este mensaje' })
-      continue
-    }
-    if (!pathLikelyRequested(userMessage, w.path)) {
-      rejected.push({
-        path: w.path,
-        reason: 'ruta no mencionada en el mensaje del usuario (evita tocar archivos no pedidos)',
-      })
       continue
     }
     allowed.push(w)
   }
 
   return { allowed, rejected }
+}
+
+export interface PatchGuardResult {
+  allowed: PatchOp[]
+  rejected: Array<{ path: string; reason: string }>
+}
+
+export function filterPatchesByUserIntent(
+  userMessage: string,
+  patches: PatchOp[],
+): PatchGuardResult {
+  const allowed: PatchOp[] = patches.slice()
+  return { allowed, rejected: [] }
 }

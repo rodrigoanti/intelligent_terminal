@@ -69,3 +69,50 @@ export function writeProjectFile(
     return { ok: false, error: msg }
   }
 }
+
+export interface ReadLineRange {
+  startLine: number
+  endLine: number
+}
+
+/** Lee líneas 1-indexed inclusive; el contenido incluye prefijo `N|`. */
+export function readProjectFileLines(
+  projectRoot: string,
+  relPath: string,
+  range: ReadLineRange,
+): { ok: true; content: string; totalLines: number } | { ok: false; error: string } {
+  const full = readProjectFile(projectRoot, relPath)
+  if (!full.ok) return full
+  const lines = full.content.split('\n')
+  const totalLines = lines.length
+  const start = Math.max(1, Math.min(range.startLine, totalLines))
+  const end = Math.max(start, Math.min(range.endLine, totalLines))
+  const slice = lines.slice(start - 1, end)
+  const numbered = slice.map((line, i) => `${start + i}|${line}`).join('\n')
+  return { ok: true, content: numbered, totalLines }
+}
+
+export interface PatchHunk {
+  search: string
+  replace: string
+}
+
+/** Aplica hunks en orden; cada `search` debe aparecer exactamente una vez. */
+export function applyProjectPatch(
+  projectRoot: string,
+  relPath: string,
+  hunks: PatchHunk[],
+): { ok: true } | { ok: false; error: string } {
+  const full = readProjectFile(projectRoot, relPath)
+  if (!full.ok) return full
+  let content = full.content
+  for (let i = 0; i < hunks.length; i++) {
+    const { search, replace } = hunks[i]
+    if (!search) return { ok: false, error: `hunk ${i + 1}: empty search` }
+    const count = content.split(search).length - 1
+    if (count === 0) return { ok: false, error: `hunk ${i + 1}: search text not found` }
+    if (count > 1) return { ok: false, error: `hunk ${i + 1}: search text is ambiguous (${count} matches)` }
+    content = content.replace(search, replace)
+  }
+  return writeProjectFile(projectRoot, relPath, content)
+}

@@ -4,15 +4,29 @@ export const READ_BLOCK_START = '<<<AI_TERMINAL_READ>>>'
 export const READ_BLOCK_END = '<<<END_AI_TERMINAL_READ>>>'
 export const RUN_BLOCK_START = '<<<AI_TERMINAL_RUN>>>'
 export const RUN_BLOCK_END = '<<<END_AI_TERMINAL_RUN>>>'
+export const GREP_BLOCK_START = '<<<AI_TERMINAL_GREP>>>'
+export const GREP_BLOCK_END = '<<<END_AI_TERMINAL_GREP>>>'
+export const LIST_BLOCK_START = '<<<AI_TERMINAL_LIST>>>'
+export const LIST_BLOCK_END = '<<<END_AI_TERMINAL_LIST>>>'
+export const GLOB_BLOCK_START = '<<<AI_TERMINAL_GLOB>>>'
+export const GLOB_BLOCK_END = '<<<END_AI_TERMINAL_GLOB>>>'
+export const GIT_BLOCK_START = '<<<AI_TERMINAL_GIT>>>'
+export const GIT_BLOCK_END = '<<<END_AI_TERMINAL_GIT>>>'
+export const PATCH_BLOCK_START = '<<<AI_TERMINAL_PATCH path="'
+export const PATCH_BLOCK_END = '<<<END_AI_TERMINAL_PATCH>>>'
 export const WRITE_BLOCK_START = '<<<AI_TERMINAL_WRITE path="'
 export const WRITE_BLOCK_MID = '">>>'
 export const WRITE_BLOCK_END = '<<<END_AI_TERMINAL_WRITE>>>'
 
+export interface ReadRequest {
+  path: string
+  startLine?: number
+  endLine?: number
+}
+
 export interface ReadBlockResult {
-  /** Texto sin el bloque READ (si había bloque). */
   stripped: string
-  /** Rutas relativas solicitadas (sin duplicados). */
-  paths: string[]
+  requests: ReadRequest[]
 }
 
 /**
@@ -43,25 +57,176 @@ export function extractRunBlocks(text: string): { stripped: string; commands: st
   return { stripped: stripped.trimEnd(), commands }
 }
 
-export function extractReadBlock(text: string): ReadBlockResult {
-  const start = text.indexOf(READ_BLOCK_START)
-  if (start === -1) return { stripped: text, paths: [] }
-  const afterStart = start + READ_BLOCK_START.length
-  const end = text.indexOf(READ_BLOCK_END, afterStart)
-  if (end === -1) return { stripped: text, paths: [] }
+export interface GrepQuery {
+  pattern: string
+  /** Ruta relativa o `.` para todo el proyecto. */
+  scope: string
+}
+
+export interface GrepBlockResult {
+  stripped: string
+  queries: GrepQuery[]
+}
+
+/** Parsea `patrón` o `patrón :: src/carpeta` por línea. */
+function parseGrepLine(line: string): GrepQuery | null {
+  const raw = line.trim()
+  if (!raw || raw.startsWith('#')) return null
+  const sep = raw.indexOf('::')
+  if (sep === -1) return { pattern: raw.replace(/^[`'"]+|[`'"]+$/g, ''), scope: '.' }
+  const pattern = raw.slice(0, sep).trim().replace(/^[`'"]+|[`'"]+$/g, '')
+  const scope = raw.slice(sep + 2).trim().replace(/^[`'"]+|[`'"]+$/g, '') || '.'
+  if (!pattern) return null
+  return { pattern, scope }
+}
+
+export function extractGrepBlock(text: string): GrepBlockResult {
+  const start = text.indexOf(GREP_BLOCK_START)
+  if (start === -1) return { stripped: text, queries: [] }
+  const afterStart = start + GREP_BLOCK_START.length
+  const end = text.indexOf(GREP_BLOCK_END, afterStart)
+  if (end === -1) return { stripped: text, queries: [] }
 
   const before = text.slice(0, start).trimEnd()
   const inner = text.slice(afterStart, end)
   const seen = new Set<string>()
-  const paths: string[] = []
+  const queries: GrepQuery[] = []
+  for (const line of inner.split('\n')) {
+    const q = parseGrepLine(line)
+    if (!q) continue
+    const key = `${q.pattern}\0${q.scope}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    queries.push(q)
+  }
+  return { stripped: before, queries }
+}
+
+/** `path`, `path:42` (una línea) o `path:10-80` (rango 1-indexed). */
+export function parseReadLine(line: string): ReadRequest | null {
+  const raw = line.trim().replace(/^[`'"]+|[`'"]+$/g, '')
+  if (!raw || raw.startsWith('#')) return null
+  const rangeMatch = raw.match(/^(.+):(\d+)(?:-(\d+))?$/)
+  if (rangeMatch) {
+    const path = rangeMatch[1].trim()
+    const startLine = parseInt(rangeMatch[2], 10)
+    const endLine = parseInt(rangeMatch[3] ?? rangeMatch[2], 10)
+    if (!path || Number.isNaN(startLine) || Number.isNaN(endLine)) return null
+    return { path, startLine, endLine: Math.max(startLine, endLine) }
+  }
+  return { path: raw }
+}
+
+export function extractReadBlock(text: string): ReadBlockResult {
+  const start = text.indexOf(READ_BLOCK_START)
+  if (start === -1) return { stripped: text, requests: [] }
+  const afterStart = start + READ_BLOCK_START.length
+  const end = text.indexOf(READ_BLOCK_END, afterStart)
+  if (end === -1) return { stripped: text, requests: [] }
+
+  const before = text.slice(0, start).trimEnd()
+  const inner = text.slice(afterStart, end)
+  const seen = new Set<string>()
+  const requests: ReadRequest[] = []
+  for (const line of inner.split('\n')) {
+    const req = parseReadLine(line)
+    if (!req) continue
+    const key = `${req.path}:${req.startLine ?? ''}:${req.endLine ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    requests.push(req)
+  }
+  return { stripped: before, requests }
+}
+
+function parseBlockLines(inner: string): string[] {
+  const lines: string[] = []
+  const seen = new Set<string>()
   for (const line of inner.split('\n')) {
     const p = line.trim().replace(/^[`'"]+|[`'"]+$/g, '')
-    if (!p || p.startsWith('#')) continue
-    if (seen.has(p)) continue
+    if (!p || p.startsWith('#') || seen.has(p)) continue
     seen.add(p)
-    paths.push(p)
+    lines.push(p)
   }
-  return { stripped: before, paths }
+  return lines
+}
+
+export function extractListBlock(text: string): { stripped: string; dirs: string[] } {
+  const start = text.indexOf(LIST_BLOCK_START)
+  if (start === -1) return { stripped: text, dirs: [] }
+  const afterStart = start + LIST_BLOCK_START.length
+  const end = text.indexOf(LIST_BLOCK_END, afterStart)
+  if (end === -1) return { stripped: text, dirs: [] }
+  return { stripped: text.slice(0, start).trimEnd(), dirs: parseBlockLines(text.slice(afterStart, end)) }
+}
+
+export function extractGlobBlock(text: string): { stripped: string; patterns: string[] } {
+  const start = text.indexOf(GLOB_BLOCK_START)
+  if (start === -1) return { stripped: text, patterns: [] }
+  const afterStart = start + GLOB_BLOCK_START.length
+  const end = text.indexOf(GLOB_BLOCK_END, afterStart)
+  if (end === -1) return { stripped: text, patterns: [] }
+  return {
+    stripped: text.slice(0, start).trimEnd(),
+    patterns: parseBlockLines(text.slice(afterStart, end)),
+  }
+}
+
+export type GitBlockCommand = 'status' | 'diff' | 'diff-staged'
+
+export interface GitBlockRequest {
+  command: GitBlockCommand
+  paths: string[]
+}
+
+export function extractGitBlock(text: string): { stripped: string; request: GitBlockRequest | null } {
+  const start = text.indexOf(GIT_BLOCK_START)
+  if (start === -1) return { stripped: text, request: null }
+  const afterStart = start + GIT_BLOCK_START.length
+  const end = text.indexOf(GIT_BLOCK_END, afterStart)
+  if (end === -1) return { stripped: text, request: null }
+
+  const lines = parseBlockLines(text.slice(afterStart, end))
+  if (lines.length === 0) return { stripped: text.slice(0, start).trimEnd(), request: null }
+  const cmdRaw = lines[0].toLowerCase()
+  let command: GitBlockCommand = 'status'
+  if (cmdRaw === 'diff' || cmdRaw === 'diff-unstaged') command = 'diff'
+  else if (cmdRaw === 'diff-staged' || cmdRaw === 'staged') command = 'diff-staged'
+  else if (cmdRaw === 'status') command = 'status'
+  const paths = lines.slice(1)
+  return { stripped: text.slice(0, start).trimEnd(), request: { command, paths } }
+}
+
+export interface PatchHunk {
+  search: string
+  replace: string
+}
+
+export interface PatchOp {
+  path: string
+  hunks: PatchHunk[]
+}
+
+function parsePatchHunks(inner: string): PatchHunk[] {
+  const hunks: PatchHunk[] = []
+  const re = /<<<< SEARCH\n([\s\S]*?)\n====\n([\s\S]*?)\n>>>> REPLACE/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(inner)) !== null) {
+    hunks.push({ search: m[1], replace: m[2] })
+  }
+  return hunks
+}
+
+export function extractPatchBlocks(text: string): { stripped: string; patches: PatchOp[] } {
+  const re = /<<<AI_TERMINAL_PATCH path="([^"]+)">>>\n?([\s\S]*?)<<<END_AI_TERMINAL_PATCH>>>/g
+  const patches: PatchOp[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const hunks = parsePatchHunks(m[2])
+    if (hunks.length > 0) patches.push({ path: m[1], hunks })
+  }
+  const stripped = text.replace(re, '').trimEnd()
+  return { stripped, patches }
 }
 
 export interface WriteOp {

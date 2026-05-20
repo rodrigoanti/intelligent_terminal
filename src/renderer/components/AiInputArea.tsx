@@ -1,37 +1,33 @@
-import React, { useId, useRef, useState, useCallback } from 'react'
+import React, { useId, useRef, useState, useCallback, useEffect } from 'react'
 import { useT } from '@i18n/useT'
-import { Input } from './ui/Input'
 import { AiFileMentionPopup } from './AiFileMentionPopup'
 import type { MentionedFile } from '@ai/ollamaClient'
+
+const MAX_INPUT_ROWS = 6
+const MIN_INPUT_ROWS = 1
 
 interface AiInputAreaProps {
   value: string
   loading: boolean
-  /** ID de sesión PTY, necesario para resolver @menciones vía window.api. */
   sessionId: string
-  /** Lista de archivos disponibles para @mention (rutas relativas al cwd). */
   availableFiles: string[]
-  /** Llamado la primera vez que el usuario escribe @ para cargar la lista de archivos. */
   onRequestFiles: () => void
   onChange: (value: string) => void
   onSend: (mentionedFiles: MentionedFile[]) => void
   onStop: () => void
-  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
-  inputRef: React.RefObject<HTMLInputElement>
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  inputRef: React.RefObject<HTMLTextAreaElement>
 }
 
-/** Extrae el prefijo de @mención activa en el cursor, si existe. Devuelve null si no hay mención abierta. */
 function getActiveMentionPrefix(value: string, cursorPos: number): string | null {
   const before = value.slice(0, cursorPos)
   const atIdx = before.lastIndexOf('@')
   if (atIdx === -1) return null
-  // Si hay un espacio entre @ y el cursor, la mención ya terminó
   const fragment = before.slice(atIdx + 1)
-  if (fragment.includes(' ')) return null
+  if (fragment.includes(' ') || fragment.includes('\n')) return null
   return fragment
 }
 
-/** Reemplaza el texto de la mención activa con la ruta seleccionada. */
 function replaceMention(value: string, cursorPos: number, selectedPath: string): string {
   const before = value.slice(0, cursorPos)
   const atIdx = before.lastIndexOf('@')
@@ -40,7 +36,6 @@ function replaceMention(value: string, cursorPos: number, selectedPath: string):
   return `${value.slice(0, atIdx)}@${selectedPath} ${after}`
 }
 
-/** Parsea todas las @menciones completas del texto. */
 function parseMentions(text: string): string[] {
   const regex = /@([\w./\-]+)/g
   const matches: string[] = []
@@ -49,6 +44,13 @@ function parseMentions(text: string): string[] {
     matches.push(m[1])
   }
   return matches
+}
+
+function resizeTextarea(el: HTMLTextAreaElement): void {
+  el.style.height = 'auto'
+  const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 18
+  const maxH = lineHeight * MAX_INPUT_ROWS + 12
+  el.style.height = `${Math.min(el.scrollHeight, maxH)}px`
 }
 
 export const AiInputArea: React.FC<AiInputAreaProps> = ({
@@ -66,15 +68,21 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
   const { t } = useT()
   const inputId = useId()
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
-  const mentionedFilesRef = useRef<MentionedFile[]>([])
+
+  useEffect(() => {
+    const el = inputRef.current
+    if (el) resizeTextarea(el)
+  }, [value, inputRef])
 
   const handleChange = useCallback((newValue: string): void => {
     onChange(newValue)
     const cursor = inputRef.current?.selectionStart ?? newValue.length
     const query = getActiveMentionPrefix(newValue, cursor)
-    // Carga la lista de archivos la primera vez que el usuario escribe @
     if (query !== null) onRequestFiles()
     setMentionQuery(query)
+    requestAnimationFrame(() => {
+      if (inputRef.current) resizeTextarea(inputRef.current)
+    })
   }, [onChange, inputRef, onRequestFiles])
 
   const handleSelectMention = useCallback((path: string): void => {
@@ -82,13 +90,13 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
     const newValue = replaceMention(value, cursor, path)
     onChange(newValue)
     setMentionQuery(null)
-    // Re-enfocar input y mover cursor al final de la mención insertada
     requestAnimationFrame(() => {
       const el = inputRef.current
       if (!el) return
       el.focus()
       const newCursor = newValue.indexOf(`@${path}`) + path.length + 2
       el.setSelectionRange(newCursor, newCursor)
+      resizeTextarea(el)
     })
   }, [value, onChange, inputRef])
 
@@ -98,25 +106,20 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
       onSend([])
       return
     }
-    // Resuelve los archivos mencionados antes de enviar
     const resolved: MentionedFile[] = []
     for (const path of mentions) {
       try {
-        // Busca la ruta en availableFiles (tolerante a mayúsculas)
         const matched = availableFiles.find(f => f.toLowerCase() === path.toLowerCase()) ?? path
         const r = await window.api.agentReadFile(sessionId, matched)
         if (r.ok && r.content !== undefined) {
           resolved.push({ path: matched, content: r.content })
         }
-      } catch {
-        /* skip unresolvable mentions */
-      }
+      } catch { /* skip */ }
     }
     onSend(resolved)
-  }, [value, availableFiles, onSend])
+  }, [value, availableFiles, onSend, sessionId])
 
-  const handleKeyDownWithMention = useCallback((e: React.KeyboardEvent<HTMLInputElement>): void => {
-    // Si hay popup activo, las teclas de navegación se gestionan en el popup
+  const handleKeyDownWithMention = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (mentionQuery !== null && ['ArrowDown', 'ArrowUp', 'Tab', 'Escape'].includes(e.key)) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -127,7 +130,7 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
   }, [mentionQuery, handleSendWithMentions, onKeyDown])
 
   return (
-    <div className="ai-input-area" style={{ position: 'relative' }}>
+    <div className="ai-input-area">
       {mentionQuery !== null && (
         <AiFileMentionPopup
           files={availableFiles}
@@ -136,39 +139,49 @@ export const AiInputArea: React.FC<AiInputAreaProps> = ({
           onClose={() => setMentionQuery(null)}
         />
       )}
-      <label className="ai-input-shell" htmlFor={inputId}>
-        <span className="ai-input-prompt" aria-hidden="true">›</span>
-        <Input
-          id={inputId}
-          ref={inputRef}
-          variant="inline"
-          size="sm"
-          value={value}
-          onChange={e => handleChange(e.target.value)}
-          onKeyDown={handleKeyDownWithMention}
-          placeholder={t('ai.inputPlaceholder')}
-          autoComplete="off"
-          spellCheck={false}
-          enterKeyHint="send"
-          disabled={loading}
-        />
-      </label>
-      <div className="ai-input-actions">
-        {loading ? (
-          <button type="button" className="ai-send-btn ai-stop-btn" onClick={onStop}>
-            {t('ai.stop')}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="ai-send-btn"
-            onClick={() => void handleSendWithMentions()}
-            disabled={!value.trim()}
-          >
-            {t('ai.send')}
-          </button>
-        )}
+      <div className="ai-input-card">
+        <label className="ai-input-shell" htmlFor={inputId}>
+          <span className="ai-input-prompt" aria-hidden="true">›</span>
+          <textarea
+            id={inputId}
+            ref={inputRef}
+            className="ai-input"
+            value={value}
+            onChange={e => handleChange(e.target.value)}
+            onKeyDown={handleKeyDownWithMention}
+            placeholder={t('ai.inputPlaceholder')}
+            autoComplete="off"
+            spellCheck={false}
+            rows={MIN_INPUT_ROWS}
+            disabled={loading}
+          />
+        </label>
+        <div className="ai-input-actions">
+          {loading ? (
+            <button
+              type="button"
+              className="ai-send-btn ai-send-btn--stop"
+              onClick={onStop}
+              title={t('ai.stop')}
+            >
+              <span className="ai-send-btn__icon" aria-hidden="true">■</span>
+              <span className="ai-send-btn__label">{t('ai.stop')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="ai-send-btn ai-send-btn--primary"
+              onClick={() => void handleSendWithMentions()}
+              disabled={!value.trim()}
+              title={t('ai.send')}
+            >
+              <span className="ai-send-btn__icon" aria-hidden="true">↑</span>
+              <span className="ai-send-btn__label">{t('ai.send')}</span>
+            </button>
+          )}
+        </div>
       </div>
+      <p className="ai-input-hint">{t('ai.inputHint')}</p>
     </div>
   )
 }

@@ -160,8 +160,18 @@ const api = {
   agentReadFile(
     sessionId: string,
     relPath: string,
-  ): Promise<{ ok: boolean; content?: string; error?: string }> {
-    return ipcRenderer.invoke(IPC.AGENT_FILE_READ, sessionId, relPath)
+    startLine?: number,
+    endLine?: number,
+  ): Promise<{ ok: boolean; content?: string; totalLines?: number; error?: string }> {
+    return ipcRenderer.invoke(IPC.AGENT_FILE_READ, sessionId, relPath, startLine, endLine)
+  },
+
+  agentPatchFile(
+    sessionId: string,
+    relPath: string,
+    hunks: Array<{ search: string; replace: string }>,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke(IPC.AGENT_FILE_PATCH, sessionId, relPath, hunks)
   },
 
   agentWriteFile(

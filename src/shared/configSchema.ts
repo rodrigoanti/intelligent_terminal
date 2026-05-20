@@ -53,6 +53,11 @@ export interface AppConfig {
   /** Si true, el chat puede leer/escribir archivos bajo el cwd (modo agente). UI: cabecera del panel IA. */
   agentMode: boolean
   /**
+   * Si true (y agentMode), tras cada respuesta del agente se vuelve a lanzar la misma tarea
+   * hasta pulsar Stop. UI: cabecera del panel IA.
+   */
+  agentLoop: boolean
+  /**
    * Ejecución de comandos RUN del agente bajo el cwd de la sesión.
    * `off`: no se ejecuta nada; `ask`: confirmación por comando; `always`: sin preguntar. UI: cabecera del panel IA.
    */
@@ -87,6 +92,7 @@ export const CONFIG_DEFAULTS: AppConfig = {
   themeId: 'vscodeDark',
   fontSize: 13,
   agentMode: false,
+  agentLoop: false,
   agentShellPolicy: 'off',
   thinkingMode: false,
   musicPlaylistIdsByMood: {},
