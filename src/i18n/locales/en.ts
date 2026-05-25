@@ -114,6 +114,11 @@ const en = {
     actionWriteErrors: 'Write errors',
   },
 
+  split: {
+    resizeColumn: 'Resize columns',
+    resizeRow: 'Resize rows',
+  },
+
   tabs: {
     defaultTitle: 'Shell {{n}}',
     confirmCloseMessage: 'Close tab "{{title}}"?',
@@ -225,6 +230,8 @@ const en = {
     closePaneAriaLabel: 'Close this panel',
     reorderTitle: 'Reorder panel',
     reorderAriaLabel: 'Reorder panel',
+    scrollDownTitle: 'Go to latest output (⌘End)',
+    scrollDownAriaLabel: 'Go to latest output',
   },
 }
 

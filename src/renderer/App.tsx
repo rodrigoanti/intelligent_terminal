@@ -11,7 +11,15 @@ import {
   type FileExplorerPersistedState,
 } from '@shared/fileExplorerPersistedState'
 import { TabBar, type TabBarHandle } from './components/TabBar'
+import { TabTerminalSplitLayout } from './components/TabTerminalSplitLayout'
 import { TerminalPane } from './terminal/TerminalPane'
+import {
+  DEFAULT_ROW_RATIO,
+  getDefaultSplitSizes,
+  normalizeSplitSizes,
+  normalizeTabSession,
+  type TabSplitSizes,
+} from './tabSplitSizes'
 import { SettingsModal } from './components/SettingsModal'
 import { ThemePickerModal } from './components/ThemePickerModal'
 import { Titlebar } from './components/Titlebar'
@@ -25,7 +33,11 @@ export interface TabSession {
   /** Cada panel = una sesión PTY (UUID); como máximo `MAX_PANES_PER_TAB` por pestaña */
   paneIds: string[]
   activePaneId: string
+  /** Proporciones de divisores entre paneles (persistido en session.json). */
+  splitSizes?: TabSplitSizes
 }
+
+export type { TabSplitSizes } from './tabSplitSizes'
 
 /** Máximo de splits por pestaña (layout 2×2). */
 export const MAX_PANES_PER_TAB = 4
@@ -58,7 +70,7 @@ function capTabsPaneCount(tabs: TabSession[], maxPanes: number): { tabs: TabSess
     const activePaneId = paneIds.includes(tab.activePaneId)
       ? tab.activePaneId
       : paneIds[paneIds.length - 1]!
-    return { ...tab, paneIds, activePaneId }
+    return normalizeTabSession({ ...tab, paneIds, activePaneId })
   })
   return { tabs: out, orphanPaneIds }
 }
@@ -246,7 +258,7 @@ export const App: React.FC = () => {
         for (const [paneId, cwd] of Object.entries(cwdsRef.current)) {
           if (cwd.trim()) splitSpawnCwdRef.current.set(paneId, cwd)
         }
-        setTabs(cappedTabs)
+        setTabs(cappedTabs.map(normalizeTabSession))
         setActiveTabId(saved.activeTabId)
       } else {
         const tab = newTab(t('tabs.defaultTitle', { n: ++tabCounter }))
@@ -471,7 +483,8 @@ export const App: React.FC = () => {
       if (idx < 0) return t
       const next = [...t.paneIds]
       next.splice(idx + 1, 0, newPaneId)
-      return { ...t, paneIds: next, activePaneId: newPaneId }
+      const splitSizes = getDefaultSplitSizes(next.length) ?? t.splitSizes
+      return normalizeTabSession({ ...t, paneIds: next, activePaneId: newPaneId, splitSizes })
     }))
     scheduleSaveSession()
   }, [rememberPaneCwd, scheduleSaveSession])
@@ -480,6 +493,30 @@ export const App: React.FC = () => {
     setActiveTabId(tabId)
     setTabs(prev => prev.map(t => (t.id === tabId ? { ...t, activePaneId: paneId } : t)))
   }, [])
+
+  const handleTabSplitSizesChange = useCallback(
+    (tabId: string, patch: Partial<TabSplitSizes>) => {
+      setTabs(prev =>
+        prev.map(t => {
+          if (t.id !== tabId) return t
+          const base = normalizeSplitSizes(t)
+          if (!base) return t
+          return {
+            ...t,
+            splitSizes: {
+              columnRatio: patch.columnRatio ?? base.columnRatio,
+              rowRatio: patch.rowRatio ?? base.rowRatio,
+            },
+          }
+        }),
+      )
+    },
+    [],
+  )
+
+  const handleSplitResizeCommit = useCallback(() => {
+    scheduleSaveSession()
+  }, [scheduleSaveSession])
 
   const tabBarRef = useRef<TabBarHandle>(null)
   const handleClosePaneRef = useRef(handleClosePane)
@@ -664,6 +701,17 @@ export const App: React.FC = () => {
       return false
     }
 
+    /** ⌘Fin: terminal activa (xterm, cuerpo del panel o chrome de la terminal). */
+    const shouldAllowScrollToBottomShortcut = (target: HTMLElement | null): boolean => {
+      if (!target) return false
+      return Boolean(
+        target.closest('.xterm') ||
+          target.closest('.terminal-pane-body') ||
+          target.closest('.pane-toolbar') ||
+          target.closest('.terminal-chrome-btn'),
+      )
+    }
+
     const onKeyDown = (e: KeyboardEvent): void => {
       const accel = e.metaKey || e.ctrlKey
       if (!accel) return
@@ -680,6 +728,20 @@ export const App: React.FC = () => {
         const tab = tabList.find(t => t.id === aid)
         if (!tab) return
         termRefs.current.get(tab.activePaneId)?.toggleAiFullscreen()
+        return
+      }
+
+      // ⌘Fin / Ctrl+Fin: ir al final del scrollback (panel activo)
+      const isEndKey = e.key === 'End' || e.code === 'End'
+      if (!e.altKey && !e.shiftKey && isEndKey) {
+        if (!shouldAllowScrollToBottomShortcut(e.target as HTMLElement | null)) return
+        e.preventDefault()
+        e.stopPropagation()
+        const tabList = tabsRef.current
+        const aid = activeTabIdRef.current
+        const tab = tabList.find(t => t.id === aid)
+        if (!tab) return
+        termRefs.current.get(tab.activePaneId)?.scrollToBottom()
         return
       }
 
@@ -848,17 +910,40 @@ export const App: React.FC = () => {
               : n === 3 ? 'tab-terminal-group--panes-3'
               : 'tab-terminal-group--panes-4'
 
+            const split = normalizeSplitSizes(tab)
+            const resizeEnabled = tab.id === activeTabId
+
             let inner: React.ReactNode
             if (n === 0) {
               inner = null
             } else if (n === 1) {
               inner = renderPaneCell(tab, p[0]!)
-            } else if (n === 2) {
-              inner = <>{p.map(pid => renderPaneCell(tab, pid))}</>
-            } else if (n === 3) {
-              inner = <>{p.map((paneId, idx) => renderPaneCell(tab, paneId, `tab-terminal-pane-cell--slot-3-${idx}`))}</>
+            } else if (split) {
+              const cells =
+                n === 3
+                  ? p.map((paneId, idx) =>
+                      renderPaneCell(tab, paneId, `tab-terminal-pane-cell--slot-3-${idx}`),
+                    )
+                  : p.map(pid => renderPaneCell(tab, pid))
+              inner = (
+                <TabTerminalSplitLayout
+                  paneCount={n as 2 | 3 | 4}
+                  columnRatio={split.columnRatio}
+                  rowRatio={split.rowRatio ?? DEFAULT_ROW_RATIO}
+                  resizeEnabled={resizeEnabled}
+                  onColumnRatioChange={ratio => {
+                    handleTabSplitSizesChange(tab.id, { columnRatio: ratio })
+                  }}
+                  onRowRatioChange={ratio => {
+                    handleTabSplitSizesChange(tab.id, { rowRatio: ratio })
+                  }}
+                  onResizeCommit={handleSplitResizeCommit}
+                >
+                  {cells}
+                </TabTerminalSplitLayout>
+              )
             } else {
-              inner = <>{p.map(pid => renderPaneCell(tab, pid))}</>
+              inner = null
             }
 
             return (

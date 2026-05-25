@@ -1,4 +1,8 @@
 import type { Terminal } from '@xterm/xterm'
+import { clearUserScrolling } from './terminalFollowScroll'
+
+/** Margen en px para considerar el viewport DOM «abajo del todo». */
+const DOM_VIEWPORT_BOTTOM_EPS_PX = 4
 
 /** Número de líneas de scroll (signo: + hacia salida reciente, − hacia historial). */
 export function wheelDeltaToTerminalLines(ev: WheelEvent, termRows: number): number {
@@ -61,6 +65,40 @@ export function syncTerminalViewport(term: Terminal): void {
   }
 }
 
+export function getTerminalViewportElement(term: Terminal): HTMLElement | null {
+  return term.element?.querySelector('.xterm-viewport') ?? null
+}
+
+export function isDomViewportAtBottom(viewportEl: HTMLElement): boolean {
+  const { scrollTop, scrollHeight, clientHeight } = viewportEl
+  return scrollTop + clientHeight >= scrollHeight - DOM_VIEWPORT_BOTTOM_EPS_PX
+}
+
+export function isBufferAtBottom(term: Terminal): boolean {
+  try {
+    const buf = term.buffer.active
+    return buf.type === 'normal' && buf.viewportY >= buf.baseY
+  } catch {
+    return false
+  }
+}
+
+/**
+ * xterm a veces deja el scrollbar del DOM al máximo mientras `viewportY < baseY`
+ * (p. ej. salida nueva con el usuario scrolleado arriba). Solo el botón/scrollToBottom
+ * realineaba buffer y viewport.
+ */
+export function reconcileTerminalScrollIfDomAtBottom(term: Terminal): void {
+  const viewportEl = getTerminalViewportElement(term)
+  if (!viewportEl || !isDomViewportAtBottom(viewportEl) || isBufferAtBottom(term)) return
+  try {
+    clearUserScrolling(term)
+    term.scrollToBottom()
+  } catch {
+    /* dispose / dimensions */
+  }
+}
+
 export function isTerminalScrolledUp(term: Terminal): boolean {
   try {
     const buf = term.buffer.active
@@ -84,23 +122,19 @@ export function applyTerminalWheelScroll(term: Terminal, ev: WheelEvent): boolea
   }
 }
 
-/**
- * Si el viewport DOM quedó desfasado respecto al buffer, re-sincroniza o acerca al fondo
- * tras un gesto hacia abajo.
- */
-export function repairTerminalViewportAfterWheel(term: Terminal, ev: WheelEvent): void {
+/** Snap al fondo si el gesto dejó al viewport cerca del prompt o el DOM ya no puede bajar más. */
+export function snapTerminalToBottomIfNear(term: Terminal, ev: WheelEvent): void {
   if (ev.deltaY <= 0) return
   try {
-    syncTerminalViewport(term)
     const buf = term.buffer.active
     if (buf.type !== 'normal' || buf.viewportY >= buf.baseY) return
     const gap = buf.baseY - buf.viewportY
-    if (gap <= 2) {
+    const viewportEl = getTerminalViewportElement(term)
+    const domStuckAtBottom = viewportEl ? isDomViewportAtBottom(viewportEl) : false
+    if (gap <= 2 || domStuckAtBottom) {
+      clearUserScrolling(term)
       term.scrollToBottom()
-      return
     }
-    const lines = wheelDeltaToTerminalLines(ev, term.rows)
-    if (lines > 0) term.scrollLines(Math.min(gap, lines))
   } catch {
     /* ignore */
   }
@@ -113,8 +147,8 @@ export function handleForwardedTerminalWheel(
 ): boolean {
   if (!shouldForwardWheelToTerminal(ev.target as HTMLElement | null, ev.deltaY)) return false
   if (!applyTerminalWheelScroll(term, ev)) return false
-  repairTerminalViewportAfterWheel(term, ev)
-  syncTerminalViewport(term)
+  snapTerminalToBottomIfNear(term, ev)
+  reconcileTerminalScrollIfDomAtBottom(term)
   if (ev.cancelable) ev.preventDefault()
   onAfterScroll?.()
   return true

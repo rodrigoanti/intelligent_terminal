@@ -116,6 +116,11 @@ const es = {
     actionWriteErrors: 'Errores al escribir',
   },
 
+  split: {
+    resizeColumn: 'Redimensionar columnas',
+    resizeRow: 'Redimensionar filas',
+  },
+
   tabs: {
     defaultTitle: 'Shell {{n}}',
     confirmCloseMessage: '¿Cerrar pestaña «{{title}}»?',
@@ -227,6 +232,8 @@ const es = {
     closePaneAriaLabel: 'Cerrar este panel',
     reorderTitle: 'Reordenar panel',
     reorderAriaLabel: 'Reordenar panel',
+    scrollDownTitle: 'Ir a la salida más reciente (⌘Fin)',
+    scrollDownAriaLabel: 'Ir a la salida más reciente',
   },
 } satisfies AppTranslations
 

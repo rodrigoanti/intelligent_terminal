@@ -25,12 +25,15 @@ import {
   type TerminalFollowState,
   updateFollowDetachedState,
   writePtyDataWithFollowScroll,
-  FOLLOW_SLACK_LINES,
 } from './terminalFollowScroll'
 import {
+  createTerminalFitScheduler,
+  fitTerminalPreserveScroll,
+} from './terminalFitScheduler'
+import {
   handleForwardedTerminalWheel,
-  isTerminalScrolledUp,
-  repairTerminalViewportAfterWheel,
+  reconcileTerminalScrollIfDomAtBottom,
+  snapTerminalToBottomIfNear,
 } from './terminalWheelScroll'
 import { CdSuggest } from './CdSuggest'
 import { CmdSuggest } from './CmdSuggest'
@@ -160,9 +163,25 @@ const CMD_SNIPPETS: Record<string, CmdSnippet[]> = {
     { label: 'node --version',          cmd: 'node --version' },
     { label: 'node -p ""',              cmd: 'node -p ""' },
   ],
+  lsof: [
+    { label: 'lsof -i :port',           cmd: 'lsof -i :' },
+    { label: 'lsof -ti :port',          cmd: 'lsof -ti :' },
+    { label: 'lsof -nP -i :port',       cmd: 'lsof -nP -i :' },
+    { label: 'lsof -i tcp',             cmd: 'lsof -i tcp' },
+    { label: 'lsof -i udp',             cmd: 'lsof -i udp' },
+  ],
+  kill: [
+    { label: 'kill PID',                cmd: 'kill ' },
+    { label: 'kill -9 PID',             cmd: 'kill -9 ' },
+    { label: 'kill -15 PID',            cmd: 'kill -15 ' },
+    { label: 'kill $(lsof -ti :port)', cmd: 'kill $(lsof -ti :)' },
+    { label: 'killall',                 cmd: 'killall ' },
+  ],
 }
 
 const CMD_SNIPPET_KEYS = Object.keys(CMD_SNIPPETS)
+/** Mínimo de caracteres en el borrador antes de filtrar recientes y snippets estáticos. */
+const CMD_SUGGEST_MIN_DRAFT_LEN = 3
 
 function getMatchedCmd(trimmedDraft: string): string | null {
   for (const cmd of CMD_SNIPPET_KEYS) {
@@ -173,7 +192,7 @@ function getMatchedCmd(trimmedDraft: string): string | null {
 
 function filterCmdSnippetsByDraft(all: CmdSnippet[], trimmedDraft: string): CmdSnippet[] {
   const d = trimmedDraft.trimStart().toLowerCase()
-  if (!d) return all
+  if (d.length < CMD_SUGGEST_MIN_DRAFT_LEN) return []
   return all.filter(
     s =>
       s.cmd.toLowerCase().startsWith(d) ||
@@ -197,7 +216,7 @@ function pushRecentUnique(prev: string[], line: string, max: number): string[] {
  */
 function filterExecutedRecentsByDraft(recent: string[], draft: string, limit: number): string[] {
   const d = draft.trimStart()
-  if (!d || isCdStart(d)) return []
+  if (!d || d.length < CMD_SUGGEST_MIN_DRAFT_LEN || isCdStart(d)) return []
   const dl = d.toLowerCase()
   const out: string[] = []
   for (const c of recent) {
@@ -210,43 +229,24 @@ function filterExecutedRecentsByDraft(recent: string[], draft: string, limit: nu
   return out
 }
 
-
-
-
-
-/**
- * Ajusta columnas/filas al contenedor sin “saltar” el scroll: si el usuario estaba
- * abajo del todo (prompt), se mantiene abajo; si había subido en el historial,
- * se conserva la misma línea superior del viewport.
- */
-function fitTerminalPreserveScroll(
-  term: Terminal,
-  fit: FitAddon,
-  followState?: TerminalFollowState,
-): void {
-  try {
-    const buf = term.buffer.active
-    if (buf.type !== 'normal') {
-      fit.fit()
-      return
-    }
-    const savedTop = buf.viewportY
-    const wasAtBottom = savedTop >= buf.baseY - FOLLOW_SLACK_LINES
-    fit.fit()
-    const b = term.buffer.active
-    if (b.type !== 'normal') return
-    if (wasAtBottom) {
-      followTerminalOutput(term)
-      if (followState) clearFollowDetached(followState)
-      return
-    }
-    const target = Math.min(Math.max(0, savedTop), Math.max(0, b.baseY))
-    term.scrollToLine(target)
-    if (followState) updateFollowDetachedState(term, followState)
-  } catch {
-    /* syncScrollArea / dimensions */
+/** ¿Hay algo que mostrar en el panel de sugerencias de comandos? */
+function shouldShowCmdSuggestPanel(
+  draft: string,
+  recent: string[],
+  matched: string | null,
+): boolean {
+  const t = draft.trimStart()
+  if (t.length < CMD_SUGGEST_MIN_DRAFT_LEN || isCdStart(t)) return false
+  if (matched) {
+    const snippets = filterCmdSnippetsByDraft(CMD_SNIPPETS[matched] ?? [], t)
+    if (snippets.length > 0) return true
   }
+  return filterExecutedRecentsByDraft(recent, t, 1).length > 0
 }
+
+
+
+
 
 /**
  * Extrae las últimas `maxLines` líneas del buffer visible de xterm.
@@ -273,6 +273,8 @@ export interface TerminalRef {
   toggleAiFullscreen: () => void
   /** Abre/cierra explorador de archivos a la derecha (⌘E). */
   toggleExplorer: () => void
+  /** Viewport al final del scrollback (⌘Fin). */
+  scrollToBottom: () => void
   /** Serializa el buffer completo (VT sequences) para persistencia */
   serialize: () => string
 }
@@ -363,6 +365,7 @@ export const TerminalPane: React.FC<Props> = ({
   onPaneCwdChangedRef.current = onPaneCwdChanged
   const toggleAiFullscreenRef = useRef<() => void>(() => {})
   const toggleExplorerRef = useRef<() => void>(() => {})
+  const scrollTerminalToBottomRef = useRef<() => void>(() => {})
   const explorerRef = useRef<FileExplorerSidebarHandle>(null)
   const explorerOpen = fileExplorer.open
   const explorerOpenRef = useRef(explorerOpen)
@@ -385,6 +388,7 @@ export const TerminalPane: React.FC<Props> = ({
 
   const [cmdSuggestCmd, setCmdSuggestCmd] = useState<string | null>(null)
   const [cmdSuggestDraft, setCmdSuggestDraft] = useState('')
+  const cmdSuggestPanelOpenRef = useRef(false)
   const [recentCommands, setRecentCommands] = useState<string[]>([])
   const [cmdHistoryLoaded, setCmdHistoryLoaded] = useState(false)
   const cmdHistoryLoadedRef = useRef(false)
@@ -412,12 +416,7 @@ export const TerminalPane: React.FC<Props> = ({
   const [findModalOpen, setFindModalOpen] = useState(false)
   const [findModalBuffer, setFindModalBuffer] = useState<TerminalBufferFindMatch[]>([])
   const [findModalHistory, setFindModalHistory] = useState<string[]>([])
-  const [terminalScrollDownVisible, setTerminalScrollDownVisible] = useState(false)
-  /**
-   * Foco en shell / barra del panel (no en chat IA). Se usa para el botón «bajar al final»;
-   * el botón cerrar ya no depende de esto: si el foco parpadea a `document.body` al pulsar X,
-   * condicionar el render ahí desmontaba el botón antes del `click`.
-   */
+  /** Foco en shell / barra del panel (no en chat IA); usado p. ej. para el botón de split. */
   const [shellOrToolbarFocused, setShellOrToolbarFocused] = useState(false)
 
   const isActivePaneRef = useRef(isActivePane)
@@ -476,9 +475,8 @@ export const TerminalPane: React.FC<Props> = ({
   }, [sessionId, syncShellOrToolbarFocus])
 
   /**
-   * Los botones chrome (cerrar, scroll, +) no deben robar el foco del PTY: si el <button>
-   * recibe foco, `shellOrToolbarFocused` puede quedar false en el microtask del focusout
-   * y React desmonta el botón antes del click. preventDefault en mousedown evita ese foco.
+   * Los botones chrome (cerrar, scroll, +) no deben robar el foco del PTY: preventDefault
+   * en mousedown evita que el botón reciba foco antes del click.
    */
   const onTerminalChromePointerDown = useCallback((e: React.MouseEvent): void => {
     e.preventDefault()
@@ -513,21 +511,37 @@ export const TerminalPane: React.FC<Props> = ({
     const dock = aiDockRef.current
     if (!root || !dock) return
 
+    let lastReserve = ''
     const apply = (): void => {
       if (aiExpanded) {
+        if (lastReserve === '0px') return
+        lastReserve = '0px'
         root.style.setProperty('--terminal-ai-dock-reserve', '0px')
         return
       }
       const h = dock.getBoundingClientRect().height
-      root.style.setProperty('--terminal-ai-dock-reserve', `${Math.ceil(h)}px`)
+      const next = `${Math.ceil(h)}px`
+      if (next === lastReserve) return
+      lastReserve = next
+      root.style.setProperty('--terminal-ai-dock-reserve', next)
     }
 
     apply()
     if (aiExpanded) return
 
-    const ro = new ResizeObserver(() => { apply() })
+    let dockRaf = 0
+    const ro = new ResizeObserver(() => {
+      if (dockRaf !== 0) return
+      dockRaf = requestAnimationFrame(() => {
+        dockRaf = 0
+        apply()
+      })
+    })
     ro.observe(dock)
-    return () => { ro.disconnect() }
+    return () => {
+      ro.disconnect()
+      if (dockRaf !== 0) cancelAnimationFrame(dockRaf)
+    }
   }, [aiExpanded])
 
   const loadCdPaths = useCallback(async (): Promise<void> => {
@@ -626,9 +640,20 @@ export const TerminalPane: React.FC<Props> = ({
     onFileExplorerChangeRef.current({ ...fileExplorerRef.current, open: nextOpen })
   }, [])
 
+  const scrollTerminalToBottom = useCallback((): void => {
+    onRequestPaneFocusRef.current?.()
+    const term = termRef.current
+    if (term) {
+      clearFollowDetached(followStateRef.current)
+      followTerminalOutput(term)
+    }
+    termRef.current?.focus()
+  }, [])
+
   // Keep ref in sync so the effect below can expose it without re-running
   toggleAiFullscreenRef.current = toggleAiFullscreen
   toggleExplorerRef.current = toggleExplorer
+  scrollTerminalToBottomRef.current = scrollTerminalToBottom
 
   /** IA: Ctrl+U + comando (misma ruta que teclear; limpia prompts copiados del modelo). */
   const injectLineFromAi = useCallback((rawCmd: string) => {
@@ -696,50 +721,30 @@ export const TerminalPane: React.FC<Props> = ({
       })
       return false
     })
-    fitTerminalPreserveScroll(term, fit, followStateRef.current)
-
     termRef.current = term
     fitRef.current = fit
     serializeAddonRef.current = serialize
 
-    const updateTerminalScrollDown = (): void => {
-      if (!termAlive || termRef.current !== term) return
-      try {
-        const buf = term.buffer.active
-        if (buf.type !== 'normal') {
-          setTerminalScrollDownVisible(false)
-          return
-        }
-        setTerminalScrollDownVisible(buf.viewportY < buf.baseY)
-      } catch {
-        setTerminalScrollDownVisible(false)
-      }
-    }
-
-    /** Rueda / barra del viewport: xterm usa scrollLines(..., suppressScrollEvent: true) y NO dispara `term.onScroll`. */
-    let scrollIndicatorRaf = 0
-    const scheduleScrollDownIndicator = (): void => {
-      if (!termAlive || termRef.current !== term) return
-      if (scrollIndicatorRaf !== 0) return
-      scrollIndicatorRaf = requestAnimationFrame(() => {
-        scrollIndicatorRaf = 0
-        if (!termAlive || termRef.current !== term) return
-        updateTerminalScrollDown()
-      })
-    }
+    const fitScheduler = createTerminalFitScheduler(
+      () => (termAlive && termRef.current === term ? term : null),
+      () => (termAlive && termRef.current === term ? fit : null),
+      () => containerRef.current,
+      followStateRef.current,
+      (cols, rows) => {
+        window.api.ptyResize(sessionId, cols, rows)
+      },
+    )
+    fitScheduler.runNow()
 
     const dScroll = term.onScroll(() => {
       updateFollowDetachedState(term, followStateRef.current)
-      updateTerminalScrollDown()
+      reconcileTerminalScrollIfDomAtBottom(term)
     })
-    const dWrite = term.onWriteParsed(() => { updateTerminalScrollDown() })
-    const dResize = term.onResize(() => { updateTerminalScrollDown() })
-    queueMicrotask(() => { updateTerminalScrollDown() })
 
     const viewportEl = containerRef.current?.querySelector('.xterm-viewport') as HTMLElement | null
     const onViewportScroll = (): void => {
       updateFollowDetachedState(term, followStateRef.current)
-      scheduleScrollDownIndicator()
+      reconcileTerminalScrollIfDomAtBottom(term)
     }
     viewportEl?.addEventListener('scroll', onViewportScroll, { passive: true })
 
@@ -748,17 +753,17 @@ export const TerminalPane: React.FC<Props> = ({
       if (!termAlive || termRef.current !== term) return
       queueMicrotask(() => {
         if (!termAlive || termRef.current !== term) return
-        if (ev.deltaY > 0 && isTerminalScrolledUp(term)) {
-          repairTerminalViewportAfterWheel(term, ev)
-        }
-        scheduleScrollDownIndicator()
+        // xterm ya movió buffer + DOM; no llamar syncScrollArea (revierte la rueda).
+        updateFollowDetachedState(term, followStateRef.current)
+        snapTerminalToBottomIfNear(term, ev)
+        reconcileTerminalScrollIfDomAtBottom(term)
       })
     }
     xtermEl?.addEventListener('wheel', onXtermWheelAfter, { passive: true })
 
     const onPaneWheelCapture = (ev: WheelEvent): void => {
       if (!termAlive || termRef.current !== term) return
-      handleForwardedTerminalWheel(term, ev, scheduleScrollDownIndicator)
+      handleForwardedTerminalWheel(term, ev)
     }
     const paneRoot = paneRootRef.current
     paneRoot?.addEventListener('wheel', onPaneWheelCapture, { passive: false, capture: true })
@@ -785,7 +790,6 @@ export const TerminalPane: React.FC<Props> = ({
         clearFollowDetached(followStateRef.current)
         followTerminalOutput(term)
         scheduleTerminalCanvasRepaint()
-        updateTerminalScrollDown()
       })
     })
 
@@ -806,7 +810,6 @@ export const TerminalPane: React.FC<Props> = ({
         term.clear()
         clearFollowDetached(followStateRef.current)
         scheduleTerminalCanvasRepaint()
-        updateTerminalScrollDown()
         if (scrollbackSaveTimerRef.current) {
           clearTimeout(scrollbackSaveTimerRef.current)
           scrollbackSaveTimerRef.current = null
@@ -823,6 +826,7 @@ export const TerminalPane: React.FC<Props> = ({
       const { draft, completedLines } = feedCompletedUserLines(userLineDraftRef.current, raw)
       userLineDraftRef.current = draft
       if (completedLines.length > 0) {
+        cmdSuggestPanelOpenRef.current = false
         setCmdSuggestCmd(null)
         setCmdSuggestDraft('')
         // Marcar como ocupado al enviar un comando al PTY
@@ -859,12 +863,12 @@ export const TerminalPane: React.FC<Props> = ({
       }
       const t = draft.trimStart()
       if (isCdStart(t)) {
-        setCdDraft(t)
         if (!cdVisibleRef.current) {
           cdVisibleRef.current = true
+          setCdVisible(true)
           void loadCdLocalDirs()
         }
-        setCdVisible(true)
+        if (cdVisibleRef.current) setCdDraft(t)
         setCmdSuggestCmd(null)
         setCmdSuggestDraft('')
       } else {
@@ -873,12 +877,20 @@ export const TerminalPane: React.FC<Props> = ({
         setCdDraft('')
         setCdLocalDirs([])
         const matched = getMatchedCmd(t)
-        if (matched) {
-          setCmdSuggestCmd(matched)
-          setCmdSuggestDraft(t)
+        const showCmdPanel = shouldShowCmdSuggestPanel(
+          t,
+          recentCommandsRef.current,
+          matched,
+        )
+        if (!showCmdPanel) {
+          if (cmdSuggestPanelOpenRef.current) {
+            cmdSuggestPanelOpenRef.current = false
+            setCmdSuggestCmd(null)
+            setCmdSuggestDraft('')
+          }
         } else {
-          setCmdSuggestCmd(null)
-          /* Mantener el borrador para listar “recientes” (pnpm, yarn, etc.). */
+          cmdSuggestPanelOpenRef.current = true
+          setCmdSuggestCmd(matched)
           setCmdSuggestDraft(t)
         }
       }
@@ -900,27 +912,19 @@ export const TerminalPane: React.FC<Props> = ({
       },
       toggleAiFullscreen: () => toggleAiFullscreenRef.current(),
       toggleExplorer: () => toggleExplorerRef.current(),
+      scrollToBottom: () => scrollTerminalToBottomRef.current(),
       serialize: () => serializeAddonRef.current?.serialize() ?? '',
     })
 
     term.onData(data => {
       absorbUserInput(data)
       writeToPty(data)
-      scheduleTerminalCanvasRepaint()
     })
     term.onTitleChange(title => { if (title && isActivePaneRef.current) onTitleChange(title) })
 
     const resizeObs = new ResizeObserver(() => {
       if (!termAlive || termRef.current !== term) return
-      try {
-        fitTerminalPreserveScroll(term, fit, followStateRef.current)
-        const cols = Math.max(1, term.cols)
-        const rows = Math.max(1, term.rows)
-        window.api.ptyResize(sessionId, cols, rows)
-        updateTerminalScrollDown()
-      } catch {
-        /* syncScrollArea / dimensions durante resize o dispose */
-      }
+      fitScheduler.schedule()
     })
     if (containerRef.current) resizeObs.observe(containerRef.current)
 
@@ -961,10 +965,7 @@ export const TerminalPane: React.FC<Props> = ({
             if (!host?.isConnected) return
             try {
               window.api.ptyCreate(sessionId, dir || undefined)
-              fitTerminalPreserveScroll(term, fit, followStateRef.current)
-              const cols = Math.max(1, term.cols)
-              const rows = Math.max(1, term.rows)
-              window.api.ptyResize(sessionId, cols, rows)
+              fitScheduler.runNow()
             } catch {
               /* xterm / PTY carrera */
             }
@@ -991,10 +992,6 @@ export const TerminalPane: React.FC<Props> = ({
 
     return () => {
       termAlive = false
-      if (scrollIndicatorRaf !== 0) {
-        cancelAnimationFrame(scrollIndicatorRaf)
-        scrollIndicatorRaf = 0
-      }
       viewportEl?.removeEventListener('scroll', onViewportScroll)
       xtermEl?.removeEventListener('wheel', onXtermWheelAfter)
       paneRoot?.removeEventListener('wheel', onPaneWheelCapture, { capture: true })
@@ -1018,12 +1015,10 @@ export const TerminalPane: React.FC<Props> = ({
       }
       cdVisibleRef.current = false
       setCdVisible(false); setCdDraft(''); setCdLocalDirs([])
+      fitScheduler.cancel()
       resizeObs.disconnect()
       unsubData(); unsubExit(); unsubErr()
       dScroll.dispose()
-      dWrite.dispose()
-      dResize.dispose()
-      setTerminalScrollDownVisible(false)
       // Guardar scrollback final antes de desmontar
       try {
         const data = serializeAddonRef.current?.serialize()
@@ -1270,17 +1265,8 @@ export const TerminalPane: React.FC<Props> = ({
           <div ref={containerRef} className="terminal-container" />
 
           <TerminalScrollDown
-            visible={terminalScrollDownVisible && shellOrToolbarFocused}
             onPointerDown={onTerminalChromePointerDown}
-            onClick={() => {
-              onRequestPaneFocusRef.current?.()
-              const term = termRef.current
-              if (term) {
-                clearFollowDetached(followStateRef.current)
-                followTerminalOutput(term)
-              }
-              termRef.current?.focus()
-            }}
+            onClick={scrollTerminalToBottom}
           />
 
           <SplitPaneButton

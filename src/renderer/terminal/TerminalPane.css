@@ -256,22 +256,26 @@
 
 /* Let xterm fill the container */
 .terminal-container .xterm {
+  width: 100%;
   height: 100%;
 }
 
 
 .terminal-suggest-stack {
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap));
+  z-index: 58;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   max-height: min(40vh, 320px);
   min-height: 0;
-  margin-top: 0;
+  pointer-events: auto;
   border-top: 1px solid var(--border);
   background: var(--bg-secondary);
-  /* Misma reserva que .terminal-pane-main: el dock IA es position:absolute y tapaba npm/git/… */
-  padding-bottom: calc(var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap));
+  box-shadow: 0 -8px 24px color-mix(in srgb, black 18%, transparent);
 }
 
 .terminal-suggest-stack > * {
