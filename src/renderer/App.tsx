@@ -14,10 +14,15 @@ import { TabBar, type TabBarHandle } from './components/TabBar'
 import { TabTerminalSplitLayout } from './components/TabTerminalSplitLayout'
 import { TerminalPane } from './terminal/TerminalPane'
 import {
+  buildPaneDragThumbnail,
+  PANE_DRAG_THUMB_HEADER_H,
+  PANE_DRAG_THUMB_W,
+} from './dragThumbnailUtils'
+import {
   DEFAULT_ROW_RATIO,
-  getDefaultSplitSizes,
   normalizeSplitSizes,
   normalizeTabSession,
+  splitSizesAfterAddingPane,
   type TabSplitSizes,
 } from './tabSplitSizes'
 import { SettingsModal } from './components/SettingsModal'
@@ -483,7 +488,7 @@ export const App: React.FC = () => {
       if (idx < 0) return t
       const next = [...t.paneIds]
       next.splice(idx + 1, 0, newPaneId)
-      const splitSizes = getDefaultSplitSizes(next.length) ?? t.splitSizes
+      const splitSizes = splitSizesAfterAddingPane(t, next.length)
       return normalizeTabSession({ ...t, paneIds: next, activePaneId: newPaneId, splitSizes })
     }))
     scheduleSaveSession()
@@ -599,6 +604,10 @@ export const App: React.FC = () => {
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', paneId)
     e.dataTransfer.setData('application/x-terminal-pane-id', paneId)
+    const thumb = buildPaneDragThumbnail(paneId)
+    document.body.appendChild(thumb)
+    e.dataTransfer.setDragImage(thumb, PANE_DRAG_THUMB_W / 2, PANE_DRAG_THUMB_HEADER_H / 2)
+    requestAnimationFrame(() => { document.body.removeChild(thumb) })
   }, [])
 
   const onPaneReorderHandleDragEnd = useCallback((): void => {
@@ -810,6 +819,7 @@ export const App: React.FC = () => {
   const renderPaneCell = (tab: TabSession, paneId: string, layoutSlotClass?: string): React.ReactElement => (
     <div
       key={paneId}
+      data-pane-id={paneId}
       className={[
         'tab-terminal-pane-cell',
         layoutSlotClass,

@@ -8,6 +8,15 @@ import {
   rowGridTemplate,
 } from '../tabSplitSizes'
 
+/** Normaliza celdas de panel (key = paneId) para reordenar sin desmontar terminales. */
+function asPaneCellList(children: React.ReactNode): React.ReactElement[] {
+  return React.Children.toArray(children).filter(React.isValidElement) as React.ReactElement[]
+}
+
+function paneCellWrapperKey(cell: React.ReactElement): React.Key {
+  return cell.key ?? 'pane-cell'
+}
+
 interface TabTerminalSplitLayoutProps {
   paneCount: 2 | 3 | 4
   columnRatio: number
@@ -36,14 +45,14 @@ function TwoPaneLayout({
     onCommit: onResizeCommit,
   })
 
-  const [left, right] = children
+  const [left, right] = asPaneCellList(children)
   return (
     <div
       ref={containerRef}
       className="tab-terminal-split tab-terminal-split--panes-2"
       style={{ gridTemplateColumns: columnGridTemplate(columnRatio) }}
     >
-      <div className="tab-terminal-split__cell">{left}</div>
+      <div key={paneCellWrapperKey(left)} className="tab-terminal-split__cell">{left}</div>
       <SplitGutter
         axis="column"
         ratio={columnRatio}
@@ -52,7 +61,7 @@ function TwoPaneLayout({
         ariaLabel={t('split.resizeColumn')}
         onPointerDown={columnDrag.onPointerDown}
       />
-      <div className="tab-terminal-split__cell">{right}</div>
+      <div key={paneCellWrapperKey(right)} className="tab-terminal-split__cell">{right}</div>
     </div>
   )
 }
@@ -82,14 +91,14 @@ function ColumnRow({
     onCommit: onResizeCommit,
   })
 
-  const [left, right] = children
+  const [left, right] = asPaneCellList(children)
   return (
     <div
       ref={rowRef}
       className="tab-terminal-split__row"
       style={{ gridTemplateColumns: columnGridTemplate(columnRatio) }}
     >
-      <div className="tab-terminal-split__cell">{left}</div>
+      <div key={paneCellWrapperKey(left)} className="tab-terminal-split__cell">{left}</div>
       <SplitGutter
         axis="column"
         ratio={columnRatio}
@@ -98,7 +107,7 @@ function ColumnRow({
         ariaLabel={t('split.resizeColumn')}
         onPointerDown={columnDrag.onPointerDown}
       />
-      <div className="tab-terminal-split__cell">{right}</div>
+      <div key={paneCellWrapperKey(right)} className="tab-terminal-split__cell">{right}</div>
     </div>
   )
 }
@@ -124,8 +133,10 @@ function ThreeOrFourPaneLayout({
     onCommit: onResizeCommit,
   })
 
+  const paneCells = asPaneCellList(children)
+
   if (paneCount === 3) {
-    const [topLeft, topRight, bottom] = children
+    const [topLeft, topRight, bottom] = paneCells
     return (
       <div
         ref={outerRef}
@@ -150,12 +161,17 @@ function ThreeOrFourPaneLayout({
           ariaLabel={t('split.resizeRow')}
           onPointerDown={rowDrag.onPointerDown}
         />
-        <div className="tab-terminal-split__cell tab-terminal-split__cell--full-width">{bottom}</div>
+        <div
+          key={paneCellWrapperKey(bottom)}
+          className="tab-terminal-split__cell tab-terminal-split__cell--full-width"
+        >
+          {bottom}
+        </div>
       </div>
     )
   }
 
-  const [topLeft, topRight, bottomLeft, bottomRight] = children
+  const [topLeft, topRight, bottomLeft, bottomRight] = paneCells
   return (
     <div
       ref={outerRef}

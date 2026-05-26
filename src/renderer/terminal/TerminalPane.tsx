@@ -380,6 +380,8 @@ export const TerminalPane: React.FC<Props> = ({
   const configRef = useRef(config)
   configRef.current = config
 
+  const [isScrolledUp, setIsScrolledUp] = useState(false)
+
   const [cdVisible, setCdVisible] = useState(false)
   const [cdDraft, setCdDraft] = useState('')
   const [cdPaths, setCdPaths] = useState<string[]>([])
@@ -642,6 +644,7 @@ export const TerminalPane: React.FC<Props> = ({
 
   const scrollTerminalToBottom = useCallback((): void => {
     onRequestPaneFocusRef.current?.()
+    setIsScrolledUp(false)
     const term = termRef.current
     if (term) {
       clearFollowDetached(followStateRef.current)
@@ -738,13 +741,14 @@ export const TerminalPane: React.FC<Props> = ({
 
     const dScroll = term.onScroll(() => {
       updateFollowDetachedState(term, followStateRef.current)
-      reconcileTerminalScrollIfDomAtBottom(term)
+      reconcileTerminalScrollIfDomAtBottom(term, followStateRef.current)
+      setIsScrolledUp(followStateRef.current.userDetached)
     })
 
     const viewportEl = containerRef.current?.querySelector('.xterm-viewport') as HTMLElement | null
     const onViewportScroll = (): void => {
       updateFollowDetachedState(term, followStateRef.current)
-      reconcileTerminalScrollIfDomAtBottom(term)
+      reconcileTerminalScrollIfDomAtBottom(term, followStateRef.current)
     }
     viewportEl?.addEventListener('scroll', onViewportScroll, { passive: true })
 
@@ -756,14 +760,14 @@ export const TerminalPane: React.FC<Props> = ({
         // xterm ya movió buffer + DOM; no llamar syncScrollArea (revierte la rueda).
         updateFollowDetachedState(term, followStateRef.current)
         snapTerminalToBottomIfNear(term, ev)
-        reconcileTerminalScrollIfDomAtBottom(term)
+        reconcileTerminalScrollIfDomAtBottom(term, followStateRef.current)
       })
     }
     xtermEl?.addEventListener('wheel', onXtermWheelAfter, { passive: true })
 
     const onPaneWheelCapture = (ev: WheelEvent): void => {
       if (!termAlive || termRef.current !== term) return
-      handleForwardedTerminalWheel(term, ev)
+      handleForwardedTerminalWheel(term, ev, followStateRef.current)
     }
     const paneRoot = paneRootRef.current
     paneRoot?.addEventListener('wheel', onPaneWheelCapture, { passive: false, capture: true })
@@ -1015,6 +1019,7 @@ export const TerminalPane: React.FC<Props> = ({
       }
       cdVisibleRef.current = false
       setCdVisible(false); setCdDraft(''); setCdLocalDirs([])
+      setIsScrolledUp(false)
       fitScheduler.cancel()
       resizeObs.disconnect()
       unsubData(); unsubExit(); unsubErr()
@@ -1264,10 +1269,12 @@ export const TerminalPane: React.FC<Props> = ({
         >
           <div ref={containerRef} className="terminal-container" />
 
-          <TerminalScrollDown
-            onPointerDown={onTerminalChromePointerDown}
-            onClick={scrollTerminalToBottom}
-          />
+          {isScrolledUp && (
+            <TerminalScrollDown
+              onPointerDown={onTerminalChromePointerDown}
+              onClick={scrollTerminalToBottom}
+            />
+          )}
 
           <SplitPaneButton
             visible={!!onRequestSplitPane && shellOrToolbarFocused}

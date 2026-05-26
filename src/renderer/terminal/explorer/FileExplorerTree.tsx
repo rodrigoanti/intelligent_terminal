@@ -23,6 +23,11 @@ import {
   pasteDestRelPath,
   type ExplorerSelectedEntry,
 } from './explorerPathUtils'
+import {
+  buildGitStatusMap,
+  gitStatusFromMap,
+  type ExplorerGitStatus,
+} from './fileExplorerGitStatus'
 
 interface FileExplorerTreeProps {
   sessionId: string
@@ -93,6 +98,9 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
     const [renamingEntry, setRenamingEntry] = useState<FileExplorerContextMenuTarget | null>(null)
     const [renameName, setRenameName] = useState('')
     const [renameError, setRenameError] = useState<string | null>(null)
+    const [gitStatusByPath, setGitStatusByPath] = useState<Map<string, ExplorerGitStatus>>(
+      () => new Map(),
+    )
 
     const createParentPath = parentDirForCreate(selectedRelPath, selectedIsDirectory)
 
@@ -103,6 +111,15 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
     const closeContextMenu = useCallback(() => {
       setContextMenu(null)
     }, [])
+
+    const refreshGitStatus = useCallback(async (): Promise<void> => {
+      try {
+        const status = await window.api.gitStatus(sessionId)
+        setGitStatusByPath(buildGitStatusMap(status))
+      } catch {
+        setGitStatusByPath(new Map())
+      }
+    }, [sessionId])
 
     const loadDir = useCallback(
       async (relPath: string): Promise<void> => {
@@ -150,7 +167,8 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
       setChildrenByDir(new Map())
       await loadDir('')
       await reloadExpandedDirs()
-    }, [loadDir, reloadExpandedDirs])
+      await refreshGitStatus()
+    }, [loadDir, reloadExpandedDirs, refreshGitStatus])
 
     const resetTreeForNewCwd = useCallback(async (): Promise<void> => {
       lastManualResetAtRef.current = Date.now()
@@ -179,6 +197,14 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
       resetTreeForNewCwd,
       evictDirCache,
     }), [loadDir, reloadTree, resetTreeForNewCwd, evictDirCache])
+
+    useEffect(() => {
+      void refreshGitStatus()
+      const id = window.setInterval(() => {
+        void refreshGitStatus()
+      }, 2000)
+      return () => window.clearInterval(id)
+    }, [refreshGitStatus])
 
     useEffect(() => {
       setCreateMode(null)
@@ -295,6 +321,7 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
       } else {
         onSelectEntry(relPath, true)
       }
+      await refreshGitStatus()
     }, [
       createMode,
       createName,
@@ -304,6 +331,7 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
       loadDir,
       onFileCreated,
       onSelectEntry,
+      refreshGitStatus,
     ])
 
     const cancelCreate = useCallback(() => {
@@ -432,6 +460,7 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
       cancelRename()
       await refreshAfterMutation(parent)
       onEntryRenamed?.(oldRel, newRel, isDirectory)
+      await refreshGitStatus()
     }, [
       renamingEntry,
       renameName,
@@ -439,6 +468,7 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
       cancelRename,
       refreshAfterMutation,
       onEntryRenamed,
+      refreshGitStatus,
     ])
 
     const handleDelete = useCallback(() => {
@@ -452,6 +482,7 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
         const parent = parentRelPath(target.relPath)
         await refreshAfterMutation(parent)
         onEntryDeleted?.(target.relPath)
+        await refreshGitStatus()
       })
     }, [
       contextMenu,
@@ -459,6 +490,7 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
       sessionId,
       refreshAfterMutation,
       onEntryDeleted,
+      refreshGitStatus,
     ])
 
     const visibleRows = useMemo(() => {
@@ -601,6 +633,7 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
                 selectedRelPath === row.entry.relPath &&
                 Boolean(selectedIsDirectory) === row.entry.isDirectory
               }
+              gitStatus={gitStatusFromMap(gitStatusByPath, row.entry.relPath)}
               isRenaming={renamingEntry?.relPath === row.entry.relPath}
               renameValue={renameName}
               onRenameChange={setRenameName}

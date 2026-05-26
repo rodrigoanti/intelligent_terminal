@@ -2,6 +2,8 @@ import React, { useRef } from 'react'
 import type { FileExplorerEntry } from '@shared/fileExplorerTypes'
 import { Icon } from '../../components/ui/Icon'
 import { Spinner } from '../../components/ui/Spinner'
+import { FileExplorerEntryIcon } from './FileExplorerEntryIcon'
+import type { ExplorerGitStatus } from './fileExplorerGitStatus'
 
 interface FileExplorerTreeNodeProps {
   entry: FileExplorerEntry
@@ -9,6 +11,7 @@ interface FileExplorerTreeNodeProps {
   expanded: boolean
   loading: boolean
   selected: boolean
+  gitStatus?: ExplorerGitStatus | null
   isRenaming: boolean
   renameValue: string
   onRenameChange: (value: string) => void
@@ -24,6 +27,7 @@ export const FileExplorerTreeNode: React.FC<FileExplorerTreeNodeProps> = ({
   expanded,
   loading,
   selected,
+  gitStatus = null,
   isRenaming,
   renameValue,
   onRenameChange,
@@ -120,9 +124,17 @@ export const FileExplorerTreeNode: React.FC<FileExplorerTreeNodeProps> = ({
         )}
       </span>
       <span className="file-explorer-tree-node__icon" aria-hidden>
-        <Icon name={isDir ? 'folder' : 'files'} size={9} />
+        <FileExplorerEntryIcon name={entry.name} isDirectory={isDir} expanded={expanded} />
       </span>
-      <span className="file-explorer-tree-node__name">{entry.name}</span>
+      <span
+        className={[
+          'file-explorer-tree-node__name',
+          gitStatus === 'new' ? 'file-explorer-tree-node__name--git-new' : '',
+          gitStatus === 'modified' ? 'file-explorer-tree-node__name--git-modified' : '',
+        ].filter(Boolean).join(' ')}
+      >
+        {entry.name}
+      </span>
     </button>
   )
 }

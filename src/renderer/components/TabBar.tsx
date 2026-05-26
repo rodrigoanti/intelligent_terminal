@@ -4,6 +4,7 @@ import { useT } from '@i18n/useT'
 import { ConfirmTerminalModal } from './ConfirmTerminalModal'
 import { TabItem } from './TabItem'
 import { TabAddButton } from './TabAddButton'
+import { buildTabDragThumbnail } from '../dragThumbnailUtils'
 import './TabBar.css'
 
 interface Props {
@@ -98,6 +99,15 @@ export const TabBar = forwardRef<TabBarHandle, Props>(function TabBar({
                 if (editingTabId) { e.preventDefault(); return }
                 setDragId(tab.id)
                 e.dataTransfer.effectAllowed = 'move'
+                const tabEl = e.currentTarget as HTMLElement
+                const thumb = buildTabDragThumbnail(tabEl)
+                document.body.appendChild(thumb)
+                e.dataTransfer.setDragImage(
+                  thumb,
+                  tabEl.offsetWidth / 2,
+                  tabEl.offsetHeight / 2,
+                )
+                requestAnimationFrame(() => { document.body.removeChild(thumb) })
               }}
               onDragOver={e => {
                 e.preventDefault()

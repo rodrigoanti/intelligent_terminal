@@ -507,6 +507,10 @@ function registerIpc(): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
 
+    // Re-montaje del renderer (reordenar paneles, StrictMode): conservar el shell vivo.
+    const existing = ptySessions.get(sessionId)
+    if (existing?.windowId === win.id) return
+
     killPty(sessionId)
     const home = app.getPath('home')
     const initialCwd = resolveSpawnCwd(cwd, home)

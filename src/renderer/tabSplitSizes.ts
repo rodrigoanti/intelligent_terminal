@@ -22,6 +22,23 @@ export function getDefaultSplitSizes(paneCount: number): TabSplitSizes | undefin
   }
 }
 
+/** Al añadir un panel, conserva ratios ya ajustados (p. ej. rowRatio 3→4). */
+export function splitSizesAfterAddingPane(
+  tab: { paneIds: string[]; splitSizes?: TabSplitSizes },
+  nextPaneCount: number,
+): TabSplitSizes | undefined {
+  const defaults = getDefaultSplitSizes(nextPaneCount)
+  if (!defaults) return undefined
+
+  const prev = normalizeSplitSizes(tab)
+  if (!prev) return defaults
+
+  return {
+    columnRatio: prev.columnRatio,
+    rowRatio: nextPaneCount >= 3 ? (prev.rowRatio ?? defaults.rowRatio) : undefined,
+  }
+}
+
 function clampRatioStatic(r: number, fallback: number): number {
   if (!Number.isFinite(r)) return fallback
   return Math.min(STATIC_MAX, Math.max(STATIC_MIN, r))

@@ -1,5 +1,5 @@
 import type { Terminal } from '@xterm/xterm'
-import { clearUserScrolling } from './terminalFollowScroll'
+import { clearUserScrolling, type TerminalFollowState } from './terminalFollowScroll'
 
 /** Margen en px para considerar el viewport DOM «abajo del todo». */
 const DOM_VIEWPORT_BOTTOM_EPS_PX = 4
@@ -87,8 +87,15 @@ export function isBufferAtBottom(term: Terminal): boolean {
  * xterm a veces deja el scrollbar del DOM al máximo mientras `viewportY < baseY`
  * (p. ej. salida nueva con el usuario scrolleado arriba). Solo el botón/scrollToBottom
  * realineaba buffer y viewport.
+ *
+ * Si `followState.userDetached` es true el usuario subió intencionalmente el scroll;
+ * en ese caso no forzamos un scrollToBottom aunque el DOM esté al tope.
  */
-export function reconcileTerminalScrollIfDomAtBottom(term: Terminal): void {
+export function reconcileTerminalScrollIfDomAtBottom(
+  term: Terminal,
+  followState?: TerminalFollowState,
+): void {
+  if (followState?.userDetached) return
   const viewportEl = getTerminalViewportElement(term)
   if (!viewportEl || !isDomViewportAtBottom(viewportEl) || isBufferAtBottom(term)) return
   try {
@@ -143,12 +150,13 @@ export function snapTerminalToBottomIfNear(term: Terminal, ev: WheelEvent): void
 export function handleForwardedTerminalWheel(
   term: Terminal,
   ev: WheelEvent,
+  followState?: TerminalFollowState,
   onAfterScroll?: () => void,
 ): boolean {
   if (!shouldForwardWheelToTerminal(ev.target as HTMLElement | null, ev.deltaY)) return false
   if (!applyTerminalWheelScroll(term, ev)) return false
   snapTerminalToBottomIfNear(term, ev)
-  reconcileTerminalScrollIfDomAtBottom(term)
+  reconcileTerminalScrollIfDomAtBottom(term, followState)
   if (ev.cancelable) ev.preventDefault()
   onAfterScroll?.()
   return true
