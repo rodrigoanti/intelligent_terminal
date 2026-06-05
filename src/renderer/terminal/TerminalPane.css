@@ -196,7 +196,7 @@
   color: var(--accent);
 }
 
-/* Flecha: bajar al final del scrollback (solo visible si hay salida más reciente abajo) */
+/* Flecha: bajar al final del scrollback (oculta solo cuando el viewport ya está abajo) */
 .terminal-scroll-down-btn {
   position: absolute;
   /* apilado sobre el botón + (22px + 4px de separación) */

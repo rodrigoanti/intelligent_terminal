@@ -32,6 +32,7 @@ import {
 } from './terminalFitScheduler'
 import {
   handleForwardedTerminalWheel,
+  isTerminalScrolledUp,
   reconcileTerminalScrollIfDomAtBottom,
   snapTerminalToBottomIfNear,
 } from './terminalWheelScroll'
@@ -739,16 +740,22 @@ export const TerminalPane: React.FC<Props> = ({
     )
     fitScheduler.runNow()
 
+    const syncScrollDownBtnVisibility = (): void => {
+      if (!termAlive || termRef.current !== term) return
+      setIsScrolledUp(isTerminalScrolledUp(term))
+    }
+
     const dScroll = term.onScroll(() => {
       updateFollowDetachedState(term, followStateRef.current)
       reconcileTerminalScrollIfDomAtBottom(term, followStateRef.current)
-      setIsScrolledUp(followStateRef.current.userDetached)
+      syncScrollDownBtnVisibility()
     })
 
     const viewportEl = containerRef.current?.querySelector('.xterm-viewport') as HTMLElement | null
     const onViewportScroll = (): void => {
       updateFollowDetachedState(term, followStateRef.current)
       reconcileTerminalScrollIfDomAtBottom(term, followStateRef.current)
+      syncScrollDownBtnVisibility()
     }
     viewportEl?.addEventListener('scroll', onViewportScroll, { passive: true })
 
@@ -761,13 +768,14 @@ export const TerminalPane: React.FC<Props> = ({
         updateFollowDetachedState(term, followStateRef.current)
         snapTerminalToBottomIfNear(term, ev)
         reconcileTerminalScrollIfDomAtBottom(term, followStateRef.current)
+        syncScrollDownBtnVisibility()
       })
     }
     xtermEl?.addEventListener('wheel', onXtermWheelAfter, { passive: true })
 
     const onPaneWheelCapture = (ev: WheelEvent): void => {
       if (!termAlive || termRef.current !== term) return
-      handleForwardedTerminalWheel(term, ev, followStateRef.current)
+      handleForwardedTerminalWheel(term, ev, followStateRef.current, syncScrollDownBtnVisibility)
     }
     const paneRoot = paneRootRef.current
     paneRoot?.addEventListener('wheel', onPaneWheelCapture, { passive: false, capture: true })
