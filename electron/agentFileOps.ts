@@ -1,5 +1,5 @@
 import { dirname, normalize, relative, resolve } from 'path'
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs'
 
 const MAX_READ_BYTES = 600_000
 
@@ -33,7 +33,17 @@ export function resolveSafeProjectPath(projectRoot: string, relPathRaw: string):
   if (!rel || rel === '.' || rel.startsWith('..') || rel.split(/[/\\]/).some(s => s === '..')) {
     return null
   }
-  return abs
+  try {
+    const realRoot = realpathSync.native(root)
+    const realAbs = realpathSync.native(abs)
+    const realRel = relative(realRoot, realAbs)
+    if (!realRel || realRel === '.' || realRel.startsWith('..') || realRel.split(/[/\\]/).some(s => s === '..')) {
+      return null
+    }
+    return realAbs
+  } catch {
+    return null
+  }
 }
 
 export function readProjectFile(

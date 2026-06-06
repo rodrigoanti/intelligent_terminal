@@ -31,10 +31,10 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 14px 32px;
+  padding: 10px 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   box-sizing: border-box;
 }
 
@@ -227,9 +227,15 @@
 }
 
 .git-diff-blocks {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .git-diff-blocks {
+    grid-template-columns: 1fr;
+  }
 }
 
 .git-diff-blocks__section {
@@ -322,12 +328,159 @@
   min-width: 120px;
 }
 
+/* Lista única de archivos con stats +/− inline */
+.git-file-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: min(30vh, 220px);
+  max-height: min(48vh, 420px);
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: calc(var(--radius) / 2);
+  background: color-mix(in srgb, var(--bg) 78%, var(--surface));
+  overflow: hidden;
+}
+
+.git-file-list__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 6px 5px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  background: color-mix(in srgb, var(--surface) 35%, var(--bg));
+  flex-shrink: 0;
+}
+
+.git-file-list__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.git-file-list__bulk-btn {
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+  min-height: 22px !important;
+  text-transform: lowercase;
+}
+
+.git-file-list__title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.git-file-list__count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent) 55%, var(--text-muted));
+  min-width: 1.25rem;
+  text-align: right;
+}
+
+.git-file-list__rows {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.git-file-list__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 3px 5px;
+  border-radius: 3px;
+}
+
+.git-file-list__row:hover {
+  background: color-mix(in srgb, var(--surface) 45%, transparent);
+}
+
+.git-file-list__name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.git-file-list__status {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.85;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.git-file-list__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 4.5rem;
+  justify-content: flex-end;
+}
+
+.git-file-list__stats--empty {
+  min-width: 4.5rem;
+}
+
+.git-file-list__stat--plus {
+  color: color-mix(in srgb, #34d399 88%, var(--text));
+}
+
+.git-file-list__stat--minus {
+  color: color-mix(in srgb, #fb7185 90%, var(--text));
+}
+
+.git-file-list__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 52px;
+  justify-content: flex-end;
+}
+
+.git-file-list__action-btn {
+  min-width: 24px !important;
+  padding: 0 6px !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+}
+
+.git-file-list__empty {
+  padding: 10px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .git-panel-commit {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 4px;
+  gap: 6px;
+  padding-top: 2px;
   border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  flex-shrink: 0;
 }
 
 .git-panel-commit-hint {
@@ -345,7 +498,7 @@
 
 .git-panel-log {
   margin: 0;
-  padding: 10px;
+  padding: 8px 10px;
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
@@ -355,8 +508,8 @@
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 90%, var(--bg));
   color: var(--text);
-  min-height: 100px;
-  max-height: min(32vh, 340px);
+  min-height: 0;
+  max-height: min(22vh, 200px);
   overflow: auto;
   flex-shrink: 0;
 }

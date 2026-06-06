@@ -64,3 +64,46 @@ export function pasteDestRelPath(selected: ExplorerSelectedEntry | null): string
   if (selected.isDirectory) return selected.relPath
   return parentDirForCreate(selected.relPath)
 }
+
+/** Remapea una ruta relativa tras renombrar un prefijo (carpeta o archivo). */
+export function remapChildRelPath(
+  relPath: string,
+  oldPrefix: string,
+  newPrefix: string,
+): string | null {
+  if (relPath === oldPrefix) return newPrefix
+  const childPrefix = `${oldPrefix}/`
+  if (relPath.startsWith(childPrefix)) {
+    return `${newPrefix}${relPath.slice(oldPrefix.length)}`
+  }
+  return null
+}
+
+/** Carpetas pesadas ocultas por defecto cuando showHiddenDirs es false. */
+export const DEFAULT_COLLAPSED_DIR_NAMES = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  'coverage',
+  '__pycache__',
+])
+
+/** True si child está dentro de parent o es el mismo (rutas relativas). */
+export function isRelPathInside(parent: string, child: string): boolean {
+  if (parent === child) return true
+  if (!parent) return false
+  return child.startsWith(`${parent}/`)
+}
+
+/** Ruta relativa de cwd respecto a la raíz del árbol (cwd de sesión). */
+export function relPathFromCwd(treeRootCwd: string, sessionCwd: string): string | null {
+  const root = normalizeSessionCwd(treeRootCwd)
+  const cwd = normalizeSessionCwd(sessionCwd)
+  if (!root || !cwd) return null
+  if (cwd === root) return ''
+  const prefix = `${root}/`
+  if (!cwd.startsWith(prefix)) return null
+  return cwd.slice(prefix.length)
+}

@@ -9,6 +9,11 @@ import type { AgentShellPolicy } from '@shared/configSchema'
 import type { ToolResult } from '@ai/agentTypes'
 import { AI_TOOLS } from '@ai/toolDefinitions'
 import {
+  isSensitiveWritePath,
+  isSuspiciousAgentWriteContent,
+} from '@shared/agentWriteGuard'
+import { requiresShellConfirmation } from '@shared/agentShellGuard'
+import {
   chatAnthropicAgentTurn,
   chatMessagesToAnthropicNative,
   appendAnthropicToolResults,
@@ -45,6 +50,8 @@ async function executeWriteFile(sessionId: string, input: Record<string, unknown
   const path = String(input.path ?? '')
   const content = String(input.content ?? '')
   if (!path) return '[ERROR: path is required]'
+  if (isSensitiveWritePath(path)) return `[BLOCKED: sensitive path: ${path}]`
+  if (isSuspiciousAgentWriteContent(content)) return `[BLOCKED: invalid write content for ${path}]`
   try {
     const r = await window.api.agentWriteFile(sessionId, path, content)
     return r.ok ? `File written: ${path}` : `[ERROR: ${r.error ?? 'write failed'}]`
@@ -62,7 +69,7 @@ async function executeRunCommand(
   const command = String(input.command ?? '')
   if (!command) return '[ERROR: command is required]'
   if (policy === 'off') return `[SKIPPED: shell execution is disabled. Command was: ${command}]`
-  if (policy === 'ask') {
+  if (requiresShellConfirmation(command, policy)) {
     const ok = (await confirm?.(command)) === true
     if (!ok) return `[REJECTED: user did not confirm command: ${command}]`
   }
@@ -83,8 +90,8 @@ async function executeSearchFiles(sessionId: string, input: Record<string, unkno
   const searchType = String(input.search_type ?? 'glob')
   if (!pattern) return '[ERROR: pattern is required]'
   const command = searchType === 'grep'
-    ? `rg --no-heading -l ${JSON.stringify(pattern)}`
-    : `find . -name ${JSON.stringify(pattern)} -not -path "*/node_modules/*" -not -path "*/.git/*"`
+    ? `rg --no-heading -l ${JSON.stringify(pattern)} --glob '!node_modules/**' --glob '!.git/**'`
+    : `rg --files -g ${JSON.stringify(pattern)} --glob '!node_modules/**' --glob '!.git/**' 2>/dev/null | head -n 60`
   try {
     const r = await window.api.agentRunShell(sessionId, command)
     if (!r.ok) return `[ERROR: ${r.error}]`

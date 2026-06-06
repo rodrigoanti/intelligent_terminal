@@ -128,7 +128,7 @@ export const FileExplorerEntryIcon: React.FC<FileExplorerEntryIconProps> = ({
         ].filter(Boolean).join(' ')}
         aria-hidden
       >
-        <Icon name={expanded ? 'folder-filled' : 'folder'} size={11} />
+        <Icon name={expanded ? 'folder-filled' : 'folder'} size={13} />
       </span>
     )
   }
@@ -140,7 +140,7 @@ export const FileExplorerEntryIcon: React.FC<FileExplorerEntryIconProps> = ({
       className={['file-explorer-entry-icon', 'file-explorer-entry-icon--file', meta.className].join(' ')}
       aria-hidden
     >
-      <span className="file-explorer-entry-icon__badge">{meta.label}</span>
+      <span className="file-explorer-entry-icon__label">{meta.label}</span>
     </span>
   )
 }

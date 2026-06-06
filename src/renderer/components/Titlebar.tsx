@@ -19,6 +19,7 @@ interface TitlebarProps {
   onFontDecrease: () => void
   onOpenThemePicker: () => void
   onOpenSettings: () => void
+  onConfigPatch?: (partial: Partial<AppConfig>) => void | Promise<void>
 }
 
 export const Titlebar: React.FC<TitlebarProps> = ({
@@ -31,6 +32,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
   onFontDecrease,
   onOpenThemePicker,
   onOpenSettings,
+  onConfigPatch,
 }) => {
   const { t } = useT()
   const theme = getTheme(config.themeId)
@@ -39,7 +41,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
     <div className="titlebar">
       <div className="titlebar-drag" />
       <div className="titlebar-actions">
-        <TitlebarMusicControls config={config} onOpenSettings={onOpenSettings} />
+        <TitlebarMusicControls config={config} onOpenSettings={onOpenSettings} onConfigPatch={onConfigPatch} />
 
         <FontSizeControl
           fontSize={fontSize}

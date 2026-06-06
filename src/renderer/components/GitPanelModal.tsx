@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppConfig } from '@shared/configSchema'
 import type { GitCommandResult, GitRepoStatus } from '@shared/gitSessionTypes'
-import { suggestGitCommitMessage } from '@ai/ollamaClient'
+import { suggestGitCommitMessage, aiOptionsFromConfig } from '@ai/aiClient'
 import { useT } from '@i18n/useT'
 import { TerminalModal } from './TerminalModal'
 import { Button } from './ui/Button'
@@ -9,18 +9,10 @@ import { TextArea } from './ui/TextArea'
 import { Spinner } from './ui/Spinner'
 import { Icon } from './ui/Icon'
 import { GitBranchBadge } from './git/GitBranchBadge'
-import { GitDiffBlocks } from './git/GitDiffBlocks'
+import { GitFileList } from './git/GitFileList'
 import { GitHubActionsPanel } from './git/GitHubActionsPanel'
+import { formatGitCommandResult } from './git/gitErrorI18n'
 import './GitPanelModal.css'
-
-function formatGitResult(label: string, r: GitCommandResult): string {
-  const parts = [
-    `— ${label} (exit ${r.exitCode ?? '?'}) —`,
-    r.stderr.trim() && `stderr:\n${r.stderr.trim()}`,
-    r.stdout.trim() && `stdout:\n${r.stdout.trim()}`,
-  ].filter(Boolean)
-  return parts.join('\n\n')
-}
 
 interface GitPanelModalProps {
   open: boolean
@@ -87,7 +79,7 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
       setBusy(label)
       try {
         const r = await fn()
-        setLastLog(formatGitResult(label, r))
+        setLastLog(formatGitCommandResult(t, label, r))
         await refresh()
       } catch (e) {
         setLastLog(`${label}: ${e instanceof Error ? e.message : String(e)}`)
@@ -95,8 +87,30 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
         setBusy(null)
       }
     },
-    [refresh],
+    [refresh, t],
   )
+
+  const onStageFile = useCallback(
+    (relPath: string): void => {
+      void runAndLog(`git add ${relPath}`, () => window.api.gitStageFile(sessionId, relPath))
+    },
+    [runAndLog, sessionId],
+  )
+
+  const onUnstageFile = useCallback(
+    (relPath: string): void => {
+      void runAndLog(`git restore --staged ${relPath}`, () => window.api.gitUnstageFile(sessionId, relPath))
+    },
+    [runAndLog, sessionId],
+  )
+
+  const onStageAll = useCallback((): void => {
+    void runAndLog('git add -A', () => window.api.gitStageAll(sessionId))
+  }, [runAndLog, sessionId])
+
+  const onUnstageAll = useCallback((): void => {
+    void runAndLog('git restore --staged .', () => window.api.gitUnstageAll(sessionId))
+  }, [runAndLog, sessionId])
 
   const onPull = (): void => {
     void runAndLog('git pull', () => window.api.gitPull(sessionId))
@@ -131,11 +145,10 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
           setLastLog(diff.error ?? t('git.diffError'))
           return
         }
-        const suggestion = await suggestGitCommitMessage(diff.text, {
-          baseURL: config.ollamaBaseURL,
-          model: config.defaultModel,
-          signal: ctrl.signal,
-        })
+        const suggestion = await suggestGitCommitMessage(
+          diff.text,
+          aiOptionsFromConfig(config, { signal: ctrl.signal }),
+        )
         setCommitMsg(suggestion)
       } catch (e) {
         if ((e as Error).name === 'AbortError') return
@@ -160,6 +173,7 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
         title={t('git.title')}
         titleId="git-panel-title"
         size="xxl"
+        bodyLayout="flush"
         zIndex={670}
         footer={
           <span className="git-panel-footer-hint">
@@ -219,20 +233,23 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
 
                   {!status.isRepo && (
                     <p className="git-panel-not-repo" role="alert">
-                      {status.error ?? t('git.notGitRepo')}
+                      {status.errorCode
+                        ? t(`git.errors.${status.errorCode}` as 'git.errors.CWD_INVALID')
+                        : (status.error ?? t('git.notGitRepo'))}
                     </p>
                   )}
 
                   {status.isRepo && (
-                    <>
-                      <h3 className="git-panel-section-title">{t('git.diffSummaryTitle')}</h3>
-                      <GitDiffBlocks
-                        stagedTitle={t('git.stagedLabel')}
-                        stagedBody={status.stagedDiffStat ?? ''}
-                        unstagedTitle={t('git.unstagedLabel')}
-                        unstagedBody={status.diffStat ?? ''}
-                      />
-                    </>
+                    <GitFileList
+                      files={status.files}
+                      unstagedNumStat={status.diffNumStat ?? ''}
+                      stagedNumStat={status.stagedDiffNumStat ?? ''}
+                      idle={idle}
+                      onStageFile={onStageFile}
+                      onUnstageFile={onUnstageFile}
+                      onStageAll={onStageAll}
+                      onUnstageAll={onUnstageAll}
+                    />
                   )}
 
                   {repo && status && (
@@ -253,18 +270,10 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
                             </span>
                           )}
                         </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          disabled={!idle}
-                          onClick={() => void runAndLog('git add -A', () => window.api.gitStageAll(sessionId))}
-                        >
-                          {t('git.stageAllButton')}
-                        </Button>
                       </div>
                       <TextArea
                         size="md"
-                        rows={3}
+                        rows={2}
                         placeholder={t('git.commitPlaceholder')}
                         value={commitMsg}
                         onChange={e => setCommitMsg(e.target.value)}

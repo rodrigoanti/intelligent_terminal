@@ -10,6 +10,7 @@ import type {
   FileExplorerClipboardResult,
   FileExplorerFilePayload,
   FileExplorerListResult,
+  FileExplorerSearchResult,
   FileExplorerWriteResult,
 } from '../src/shared/fileExplorerTypes'
 
@@ -48,6 +49,8 @@ function createPtyChannelMux<TArgs extends unknown[]>(
 const subscribePtyData = createPtyChannelMux<[data: string]>(IPC.PTY_DATA)
 const subscribePtyExit = createPtyChannelMux<[code: number]>(IPC.PTY_EXIT)
 const subscribePtyError = createPtyChannelMux<[message: string]>(IPC.PTY_ERROR)
+const subscribeFileExplorerFsChanged = createPtyChannelMux<[dirs: string[]]>(IPC.FILE_EXPLORER_FS_CHANGED)
+const subscribeGitStatusChanged = createPtyChannelMux<[]>(IPC.GIT_STATUS_CHANGED)
 
 const api = {
   // ─── PTY ───────────────────────────────────────────────────────────────────
@@ -216,16 +219,36 @@ const api = {
     return ipcRenderer.invoke(IPC.GIT_STAGE_ALL, sessionId)
   },
 
+  gitStageFile(sessionId: string, relPath: string): Promise<GitCommandResult> {
+    return ipcRenderer.invoke(IPC.GIT_STAGE_FILE, sessionId, relPath)
+  },
+
+  gitUnstageAll(sessionId: string): Promise<GitCommandResult> {
+    return ipcRenderer.invoke(IPC.GIT_UNSTAGE_ALL, sessionId)
+  },
+
+  gitUnstageFile(sessionId: string, relPath: string): Promise<GitCommandResult> {
+    return ipcRenderer.invoke(IPC.GIT_UNSTAGE_FILE, sessionId, relPath)
+  },
+
   githubActionsList(sessionId: string): Promise<GitHubActionsSnapshot> {
     return ipcRenderer.invoke(IPC.GITHUB_ACTIONS_LIST, sessionId)
   },
 
-  fileExplorerListDir(sessionId: string, relPath: string): Promise<FileExplorerListResult> {
-    return ipcRenderer.invoke(IPC.FILE_EXPLORER_LIST_DIR, sessionId, relPath)
+  fileExplorerListDir(
+    sessionId: string,
+    relPath: string,
+    showHiddenDirs = true,
+  ): Promise<FileExplorerListResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_LIST_DIR, sessionId, relPath, showHiddenDirs)
   },
 
-  fileExplorerLoadFile(sessionId: string, relPath: string): Promise<FileExplorerFilePayload> {
-    return ipcRenderer.invoke(IPC.FILE_EXPLORER_LOAD_FILE, sessionId, relPath)
+  fileExplorerLoadFile(
+    sessionId: string,
+    relPath: string,
+    options?: { allowLarge?: boolean },
+  ): Promise<FileExplorerFilePayload> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_LOAD_FILE, sessionId, relPath, options)
   },
 
   fileExplorerSaveFile(
@@ -262,6 +285,45 @@ const api = {
     newRelPath: string,
   ): Promise<FileExplorerWriteResult> {
     return ipcRenderer.invoke(IPC.FILE_EXPLORER_RENAME, sessionId, oldRelPath, newRelPath)
+  },
+
+  fileExplorerCut(sessionId: string, relPaths: string[]): Promise<FileExplorerClipboardResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_CUT, sessionId, relPaths)
+  },
+
+  fileExplorerMove(
+    sessionId: string,
+    oldRelPath: string,
+    newRelPath: string,
+  ): Promise<FileExplorerWriteResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_MOVE, sessionId, oldRelPath, newRelPath)
+  },
+
+  fileExplorerReveal(sessionId: string, relPath: string): Promise<FileExplorerWriteResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_REVEAL, sessionId, relPath)
+  },
+
+  fileExplorerSearch(sessionId: string, query: string): Promise<FileExplorerSearchResult> {
+    return ipcRenderer.invoke(IPC.FILE_EXPLORER_SEARCH, sessionId, query)
+  },
+
+  fileExplorerWatchStart(sessionId: string): void {
+    ipcRenderer.send(IPC.FILE_EXPLORER_WATCH_START, sessionId)
+  },
+
+  fileExplorerWatchStop(sessionId: string): void {
+    ipcRenderer.send(IPC.FILE_EXPLORER_WATCH_STOP, sessionId)
+  },
+
+  onFileExplorerFsChanged(
+    sessionId: string,
+    cb: (dirs: string[]) => void,
+  ): () => void {
+    return subscribeFileExplorerFsChanged(sessionId, cb)
+  },
+
+  onGitStatusChanged(sessionId: string, cb: () => void): () => void {
+    return subscribeGitStatusChanged(sessionId, cb)
   },
 
   // ─── Persistencia ────────────────────────────────────────────────────────

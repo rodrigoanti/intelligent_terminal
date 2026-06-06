@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { useT } from '@i18n/useT'
 import { Icon } from './ui/Icon'
 import './TerminalModal.css'
@@ -49,6 +49,21 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
   bodyLayout = 'default',
 }) => {
   const { t } = useT()
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const raf = requestAnimationFrame(() => {
+      const panel = panelRef.current
+      if (!panel) return
+      const focusable = panel.querySelector<HTMLElement>(
+        'input, button, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      ;(focusable ?? panel).focus()
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [open])
+
   useEffect(() => {
     if (!open || !closeOnEscape) return
     const onKey = (e: KeyboardEvent): void => {
@@ -61,6 +76,28 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [open, closeOnEscape, onClose])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Tab' || !panelRef.current) return
+      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+        'input, button, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]!
+      const last = focusable[focusable.length - 1]!
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [open])
 
   if (!open) return null
 
@@ -79,6 +116,7 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({
       onClick={closeOnBackdrop ? onClose : undefined}
     >
       <div
+        ref={panelRef}
         className={[
           'terminal-modal-panel',
           `terminal-modal-panel--${size}`,

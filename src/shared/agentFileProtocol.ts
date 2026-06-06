@@ -81,25 +81,27 @@ function parseGrepLine(line: string): GrepQuery | null {
 }
 
 export function extractGrepBlock(text: string): GrepBlockResult {
-  const start = text.indexOf(GREP_BLOCK_START)
-  if (start === -1) return { stripped: text, queries: [] }
-  const afterStart = start + GREP_BLOCK_START.length
-  const end = text.indexOf(GREP_BLOCK_END, afterStart)
-  if (end === -1) return { stripped: text, queries: [] }
-
-  const before = text.slice(0, start).trimEnd()
-  const inner = text.slice(afterStart, end)
-  const seen = new Set<string>()
   const queries: GrepQuery[] = []
-  for (const line of inner.split('\n')) {
-    const q = parseGrepLine(line)
-    if (!q) continue
-    const key = `${q.pattern}\0${q.scope}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    queries.push(q)
+  const seen = new Set<string>()
+  let stripped = text
+  for (;;) {
+    const start = stripped.indexOf(GREP_BLOCK_START)
+    if (start === -1) break
+    const afterStart = start + GREP_BLOCK_START.length
+    const end = stripped.indexOf(GREP_BLOCK_END, afterStart)
+    if (end === -1) break
+    const inner = stripped.slice(afterStart, end)
+    for (const line of inner.split('\n')) {
+      const q = parseGrepLine(line)
+      if (!q) continue
+      const key = `${q.pattern}\0${q.scope}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      queries.push(q)
+    }
+    stripped = stripped.slice(0, start) + stripped.slice(end + GREP_BLOCK_END.length)
   }
-  return { stripped: before, queries }
+  return { stripped: stripped.trimEnd(), queries }
 }
 
 /** `path`, `path:42` (una línea) o `path:10-80` (rango 1-indexed). */
@@ -118,25 +120,27 @@ export function parseReadLine(line: string): ReadRequest | null {
 }
 
 export function extractReadBlock(text: string): ReadBlockResult {
-  const start = text.indexOf(READ_BLOCK_START)
-  if (start === -1) return { stripped: text, requests: [] }
-  const afterStart = start + READ_BLOCK_START.length
-  const end = text.indexOf(READ_BLOCK_END, afterStart)
-  if (end === -1) return { stripped: text, requests: [] }
-
-  const before = text.slice(0, start).trimEnd()
-  const inner = text.slice(afterStart, end)
-  const seen = new Set<string>()
   const requests: ReadRequest[] = []
-  for (const line of inner.split('\n')) {
-    const req = parseReadLine(line)
-    if (!req) continue
-    const key = `${req.path}:${req.startLine ?? ''}:${req.endLine ?? ''}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    requests.push(req)
+  const seen = new Set<string>()
+  let stripped = text
+  for (;;) {
+    const start = stripped.indexOf(READ_BLOCK_START)
+    if (start === -1) break
+    const afterStart = start + READ_BLOCK_START.length
+    const end = stripped.indexOf(READ_BLOCK_END, afterStart)
+    if (end === -1) break
+    const inner = stripped.slice(afterStart, end)
+    for (const line of inner.split('\n')) {
+      const req = parseReadLine(line)
+      if (!req) continue
+      const key = `${req.path}:${req.startLine ?? ''}:${req.endLine ?? ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      requests.push(req)
+    }
+    stripped = stripped.slice(0, start) + stripped.slice(end + READ_BLOCK_END.length)
   }
-  return { stripped: before, requests }
+  return { stripped: stripped.trimEnd(), requests }
 }
 
 function parseBlockLines(inner: string): string[] {
@@ -152,24 +156,45 @@ function parseBlockLines(inner: string): string[] {
 }
 
 export function extractListBlock(text: string): { stripped: string; dirs: string[] } {
-  const start = text.indexOf(LIST_BLOCK_START)
-  if (start === -1) return { stripped: text, dirs: [] }
-  const afterStart = start + LIST_BLOCK_START.length
-  const end = text.indexOf(LIST_BLOCK_END, afterStart)
-  if (end === -1) return { stripped: text, dirs: [] }
-  return { stripped: text.slice(0, start).trimEnd(), dirs: parseBlockLines(text.slice(afterStart, end)) }
+  const dirs: string[] = []
+  const seen = new Set<string>()
+  let stripped = text
+  for (;;) {
+    const start = stripped.indexOf(LIST_BLOCK_START)
+    if (start === -1) break
+    const afterStart = start + LIST_BLOCK_START.length
+    const end = stripped.indexOf(LIST_BLOCK_END, afterStart)
+    if (end === -1) break
+    for (const dir of parseBlockLines(stripped.slice(afterStart, end))) {
+      if (!seen.has(dir)) {
+        seen.add(dir)
+        dirs.push(dir)
+      }
+    }
+    stripped = stripped.slice(0, start) + stripped.slice(end + LIST_BLOCK_END.length)
+  }
+  return { stripped: stripped.trimEnd(), dirs }
 }
 
 export function extractGlobBlock(text: string): { stripped: string; patterns: string[] } {
-  const start = text.indexOf(GLOB_BLOCK_START)
-  if (start === -1) return { stripped: text, patterns: [] }
-  const afterStart = start + GLOB_BLOCK_START.length
-  const end = text.indexOf(GLOB_BLOCK_END, afterStart)
-  if (end === -1) return { stripped: text, patterns: [] }
-  return {
-    stripped: text.slice(0, start).trimEnd(),
-    patterns: parseBlockLines(text.slice(afterStart, end)),
+  const patterns: string[] = []
+  const seen = new Set<string>()
+  let stripped = text
+  for (;;) {
+    const start = stripped.indexOf(GLOB_BLOCK_START)
+    if (start === -1) break
+    const afterStart = start + GLOB_BLOCK_START.length
+    const end = stripped.indexOf(GLOB_BLOCK_END, afterStart)
+    if (end === -1) break
+    for (const pattern of parseBlockLines(stripped.slice(afterStart, end))) {
+      if (!seen.has(pattern)) {
+        seen.add(pattern)
+        patterns.push(pattern)
+      }
+    }
+    stripped = stripped.slice(0, start) + stripped.slice(end + GLOB_BLOCK_END.length)
   }
+  return { stripped: stripped.trimEnd(), patterns }
 }
 
 export type GitBlockCommand = 'status' | 'diff' | 'diff-staged'
@@ -179,22 +204,27 @@ export interface GitBlockRequest {
   paths: string[]
 }
 
-export function extractGitBlock(text: string): { stripped: string; request: GitBlockRequest | null } {
-  const start = text.indexOf(GIT_BLOCK_START)
-  if (start === -1) return { stripped: text, request: null }
-  const afterStart = start + GIT_BLOCK_START.length
-  const end = text.indexOf(GIT_BLOCK_END, afterStart)
-  if (end === -1) return { stripped: text, request: null }
-
-  const lines = parseBlockLines(text.slice(afterStart, end))
-  if (lines.length === 0) return { stripped: text.slice(0, start).trimEnd(), request: null }
-  const cmdRaw = lines[0].toLowerCase()
-  let command: GitBlockCommand = 'status'
-  if (cmdRaw === 'diff' || cmdRaw === 'diff-unstaged') command = 'diff'
-  else if (cmdRaw === 'diff-staged' || cmdRaw === 'staged') command = 'diff-staged'
-  else if (cmdRaw === 'status') command = 'status'
-  const paths = lines.slice(1)
-  return { stripped: text.slice(0, start).trimEnd(), request: { command, paths } }
+export function extractGitBlock(text: string): { stripped: string; requests: GitBlockRequest[] } {
+  const requests: GitBlockRequest[] = []
+  let stripped = text
+  for (;;) {
+    const start = stripped.indexOf(GIT_BLOCK_START)
+    if (start === -1) break
+    const afterStart = start + GIT_BLOCK_START.length
+    const end = stripped.indexOf(GIT_BLOCK_END, afterStart)
+    if (end === -1) break
+    const lines = parseBlockLines(stripped.slice(afterStart, end))
+    if (lines.length > 0) {
+      const cmdRaw = lines[0].toLowerCase()
+      let command: GitBlockCommand = 'status'
+      if (cmdRaw === 'diff' || cmdRaw === 'diff-unstaged') command = 'diff'
+      else if (cmdRaw === 'diff-staged' || cmdRaw === 'staged') command = 'diff-staged'
+      else if (cmdRaw === 'status') command = 'status'
+      requests.push({ command, paths: lines.slice(1) })
+    }
+    stripped = stripped.slice(0, start) + stripped.slice(end + GIT_BLOCK_END.length)
+  }
+  return { stripped: stripped.trimEnd(), requests }
 }
 
 export interface PatchHunk {

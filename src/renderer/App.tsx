@@ -28,6 +28,7 @@ import {
 import { SettingsModal } from './components/SettingsModal'
 import { ThemePickerModal } from './components/ThemePickerModal'
 import { Titlebar } from './components/Titlebar'
+import { deriveTabCounter, sanitizePersistedSession } from './sessionSanitize'
 import './styles/app.css'
 
 export interface TabSession {
@@ -106,6 +107,8 @@ export const App: React.FC = () => {
   const [busyPanes, setBusyPanes] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [themePickerOpen, setThemePickerOpen] = useState(false)
+  const [mountedTabIds, setMountedTabIds] = useState<Set<string>>(new Set())
+  const prevActiveTabRef = useRef('')
   /** Reordenar paneles: contexto durante HTML5 DnD (evita cierres obsoletos en dragOver). */
   const paneReorderDragRef = useRef<{ tabId: string; dragPaneId: string } | null>(null)
   const [paneDragOverPaneId, setPaneDragOverPaneId] = useState<string | null>(null)
@@ -116,6 +119,8 @@ export const App: React.FC = () => {
     toggleAiFullscreen: () => void
     toggleExplorer: () => void
     serialize: () => string
+    scrollToBottom: () => void
+    refit: () => void
   }>>(new Map())
   const splitSpawnCwdRef = useRef<Map<string, string>>(new Map())
   const cwdsRef = useRef<Record<string, string>>({})
@@ -224,8 +229,13 @@ export const App: React.FC = () => {
   // Load persisted session on mount
   useEffect(() => {
     window.api.loadSession().then(saved => {
-      if (saved?.tabs && saved.tabs.length > 0) {
-        const { tabs: cappedTabs, orphanPaneIds } = capTabsPaneCount(saved.tabs, MAX_PANES_PER_TAB)
+      const sanitized = saved ? sanitizePersistedSession(saved) : null
+      if (sanitized) {
+        const { tabs: cappedTabs, orphanPaneIds: capOrphans } = capTabsPaneCount(
+          sanitized.tabs,
+          MAX_PANES_PER_TAB,
+        )
+        const orphanPaneIds = [...new Set([...sanitized.orphanPaneIds, ...capOrphans])]
         const keptPaneIds = new Set(cappedTabs.flatMap(t => t.paneIds))
         for (const pid of orphanPaneIds) {
           window.api.ptyKill(pid)
@@ -237,34 +247,33 @@ export const App: React.FC = () => {
             window.api.deleteScrollback(pid)
             window.api.deleteAiChat(pid)
             window.api.deleteCmdHistory(pid)
+            window.api.deleteInteractionsLog(pid)
           }
         }, 0)
         cwdsRef.current = Object.fromEntries(
-          Object.entries(saved.cwds ?? {})
-            .filter(([id]) => keptPaneIds.has(id))
-            .filter(([, cwd]) => Boolean(cwd?.trim())),
+          Object.entries(sanitized.cwds).filter(([id]) => keptPaneIds.has(id)),
         )
-        const aiRaw = saved.aiExpandedByPane ?? {}
         const aiMap = Object.fromEntries(
-          Object.entries(aiRaw).filter(([id]) => keptPaneIds.has(id)),
+          Object.entries(sanitized.aiExpandedByPane).filter(([id]) => keptPaneIds.has(id)),
         )
         aiExpandedByPaneRef.current = aiMap
         setAiExpandedByPane(aiMap)
-        const explorerRaw = saved.explorerByPane ?? {}
         const explorerMap = Object.fromEntries(
-          Object.entries(explorerRaw)
+          Object.entries(sanitized.explorerByPane)
             .filter(([id]) => keptPaneIds.has(id))
             .map(([id, st]) => [id, normalizeFileExplorerState(st)]),
         )
         explorerByPaneRef.current = explorerMap
         setExplorerByPane(explorerMap)
-        // Pre-cargar cwds guardados en splitSpawnCwdRef para que PTY arranque en la carpeta correcta.
-        // Solo entradas no vacías (el operador ?? no atrapa ""; usar || en initialPtyCwd).
         for (const [paneId, cwd] of Object.entries(cwdsRef.current)) {
           if (cwd.trim()) splitSpawnCwdRef.current.set(paneId, cwd)
         }
+        tabCounter = deriveTabCounter(cappedTabs)
+        const activeTabId = cappedTabs.some(t => t.id === sanitized.activeTabId)
+          ? sanitized.activeTabId
+          : cappedTabs[0]!.id
         setTabs(cappedTabs.map(normalizeTabSession))
-        setActiveTabId(saved.activeTabId)
+        setActiveTabId(activeTabId)
       } else {
         const tab = newTab(t('tabs.defaultTitle', { n: ++tabCounter }))
         setTabs([tab])
@@ -284,6 +293,30 @@ export const App: React.FC = () => {
     if (!sessionReady.loaded || !tabs.length) return
     scheduleSaveSession()
   }, [tabs, activeTabId, sessionReady.loaded, scheduleSaveSession])
+
+  useEffect(() => {
+    if (!activeTabId) return
+    setMountedTabIds(prev => {
+      const next = new Set(prev)
+      next.add(activeTabId)
+      if (prevActiveTabRef.current && prevActiveTabRef.current !== activeTabId && next.size > 2) {
+        next.delete(prevActiveTabRef.current)
+      }
+      prevActiveTabRef.current = activeTabId
+      return next
+    })
+  }, [activeTabId])
+
+  useEffect(() => {
+    const tab = tabs.find(t => t.id === activeTabId)
+    if (!tab) return
+    const raf = requestAnimationFrame(() => {
+      for (const paneId of tab.paneIds) {
+        termRefs.current.get(paneId)?.refit?.()
+      }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [activeTabId, tabs])
 
   // Manejar APP_SAVE_BEFORE_CLOSE: serializar scrollbacks, actualizar cwds y responder
   useEffect(() => {
@@ -407,6 +440,7 @@ export const App: React.FC = () => {
           window.api.deleteScrollback(pid)
           window.api.deleteAiChat(pid)
           window.api.deleteCmdHistory(pid)
+          window.api.deleteInteractionsLog(pid)
         }
       }, 0)
     }
@@ -467,6 +501,7 @@ export const App: React.FC = () => {
       window.api.deleteScrollback(paneId)
       window.api.deleteAiChat(paneId)
       window.api.deleteCmdHistory(paneId)
+      window.api.deleteInteractionsLog(paneId)
     }, 0)
   }, [])
 
@@ -893,6 +928,7 @@ export const App: React.FC = () => {
         onFontDecrease={() => changeFontSize(-1)}
         onOpenThemePicker={() => setThemePickerOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onConfigPatch={patchConfig}
       />
 
       {/* ── Tab bar ── */}
@@ -912,6 +948,7 @@ export const App: React.FC = () => {
       <div className="main-area">
         <div className="terminals-container">
           {configReady && sessionReady.loaded && tabs.map(tab => {
+            const tabMounted = mountedTabIds.has(tab.id)
             const p = tab.paneIds
             const n = p.length
             const layoutClass =
@@ -924,7 +961,9 @@ export const App: React.FC = () => {
             const resizeEnabled = tab.id === activeTabId
 
             let inner: React.ReactNode
-            if (n === 0) {
+            if (!tabMounted) {
+              inner = <div className="tab-terminal-group-placeholder" aria-hidden />
+            } else if (n === 0) {
               inner = null
             } else if (n === 1) {
               inner = renderPaneCell(tab, p[0]!)

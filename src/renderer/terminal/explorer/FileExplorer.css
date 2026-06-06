@@ -38,8 +38,27 @@
 }
 
 .terminal-file-explorer--with-file .terminal-file-explorer__tree {
-  flex: 0 0 30%;
-  width: 30%;
+  flex: 0 0 var(--explorer-tree-width, 30%);
+  width: var(--explorer-tree-width, 30%);
+  max-width: 50%;
+}
+
+.terminal-file-explorer--with-file .terminal-file-explorer__editor {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: none;
+}
+
+.terminal-file-explorer__resize-handle {
+  flex: 0 0 4px;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.terminal-file-explorer__resize-handle:hover {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .terminal-file-explorer__editor {
@@ -64,6 +83,7 @@
 }
 
 .file-explorer-tree-wrap {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -77,6 +97,60 @@
   gap: 1px;
   padding: 2px 4px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+.file-explorer-tree__root-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 8px;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.file-explorer-tree__hidden-dot {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  vertical-align: middle;
+}
+
+.file-explorer-tree__search {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+
+.file-explorer-tree__search-hint {
+  flex: 1 1 100%;
+  font-size: 8px;
+  color: var(--text-muted);
+  padding-left: 14px;
+}
+
+.file-explorer-tree__search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  outline: none;
+}
+
+.file-explorer-tree__tool-btn--active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .file-explorer-tree__tool-btn--close {
@@ -251,7 +325,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
+  width: 16px;
+  height: 16px;
+  overflow: visible;
   color: var(--text-muted);
 }
 
@@ -263,68 +339,62 @@
 }
 
 .file-explorer-entry-icon--folder {
-  color: #dcb67a;
+  width: 14px;
+  height: 14px;
+  color: #c9a227;
+  line-height: 0;
+  overflow: visible;
+}
+
+.file-explorer-entry-icon--folder svg {
+  display: block;
 }
 
 .file-explorer-entry-icon--folder-open {
-  color: #e8cc8a;
+  color: #e8c547;
 }
 
 .file-explorer-entry-icon--file {
-  width: 14px;
-  height: 12px;
-  border-radius: 2px;
-  overflow: hidden;
+  min-width: 16px;
 }
 
-.file-explorer-entry-icon__badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
+.file-explorer-entry-icon__label {
+  display: block;
+  min-width: 14px;
   font-family: var(--font-mono);
-  font-size: 6px;
+  font-size: 7px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
+  text-align: center;
   text-transform: uppercase;
-  color: #fff;
 }
 
-.file-explorer-entry-icon--tsx { background: #3178c6; }
-.file-explorer-entry-icon--ts { background: #3178c6; }
-.file-explorer-entry-icon--jsx { background: #f1e05a; }
-.file-explorer-entry-icon--js { background: #f1e05a; }
-.file-explorer-entry-icon--json { background: #cbcb41; }
-.file-explorer-entry-icon--css { background: #563d7c; }
-.file-explorer-entry-icon--scss { background: #c6538c; }
-.file-explorer-entry-icon--less { background: #1d365d; }
-.file-explorer-entry-icon--html { background: #e44d26; }
-.file-explorer-entry-icon--md { background: #519aba; }
-.file-explorer-entry-icon--py { background: #3572a5; }
-.file-explorer-entry-icon--rs { background: #dea584; }
-.file-explorer-entry-icon--yml { background: #cb171e; }
-.file-explorer-entry-icon--svg { background: #ffb13b; }
-.file-explorer-entry-icon--image { background: #a074c4; }
-.file-explorer-entry-icon--vue { background: #41b883; }
-.file-explorer-entry-icon--sql { background: #336791; }
-.file-explorer-entry-icon--shell { background: #4eaa25; }
-.file-explorer-entry-icon--go { background: #00add8; }
-.file-explorer-entry-icon--toml { background: #9c4221; }
-.file-explorer-entry-icon--lock { background: #6b7280; }
-.file-explorer-entry-icon--npm { background: #cb3837; }
-.file-explorer-entry-icon--git { background: #f05032; }
-.file-explorer-entry-icon--docker { background: #2496ed; }
-.file-explorer-entry-icon--default { background: #6b7280; }
-
-.file-explorer-entry-icon--jsx .file-explorer-entry-icon__badge,
-.file-explorer-entry-icon--js .file-explorer-entry-icon__badge,
-.file-explorer-entry-icon--json .file-explorer-entry-icon__badge,
-.file-explorer-entry-icon--rs .file-explorer-entry-icon__badge,
-.file-explorer-entry-icon--svg .file-explorer-entry-icon__badge {
-  color: #1a1a1a;
-}
+.file-explorer-entry-icon--tsx .file-explorer-entry-icon__label { color: #3178c6; }
+.file-explorer-entry-icon--ts .file-explorer-entry-icon__label { color: #3178c6; }
+.file-explorer-entry-icon--jsx .file-explorer-entry-icon__label { color: #c9b84a; }
+.file-explorer-entry-icon--js .file-explorer-entry-icon__label { color: #c9b84a; }
+.file-explorer-entry-icon--json .file-explorer-entry-icon__label { color: #a8a832; }
+.file-explorer-entry-icon--css .file-explorer-entry-icon__label { color: #8b6bb8; }
+.file-explorer-entry-icon--scss .file-explorer-entry-icon__label { color: #c6538c; }
+.file-explorer-entry-icon--less .file-explorer-entry-icon__label { color: #4a7ab8; }
+.file-explorer-entry-icon--html .file-explorer-entry-icon__label { color: #e44d26; }
+.file-explorer-entry-icon--md .file-explorer-entry-icon__label { color: #519aba; }
+.file-explorer-entry-icon--py .file-explorer-entry-icon__label { color: #3572a5; }
+.file-explorer-entry-icon--rs .file-explorer-entry-icon__label { color: #c49a6c; }
+.file-explorer-entry-icon--yml .file-explorer-entry-icon__label { color: #cb171e; }
+.file-explorer-entry-icon--svg .file-explorer-entry-icon__label { color: #d4a017; }
+.file-explorer-entry-icon--image .file-explorer-entry-icon__label { color: #a074c4; }
+.file-explorer-entry-icon--vue .file-explorer-entry-icon__label { color: #41b883; }
+.file-explorer-entry-icon--sql .file-explorer-entry-icon__label { color: #336791; }
+.file-explorer-entry-icon--shell .file-explorer-entry-icon__label { color: #4eaa25; }
+.file-explorer-entry-icon--go .file-explorer-entry-icon__label { color: #00add8; }
+.file-explorer-entry-icon--toml .file-explorer-entry-icon__label { color: #9c4221; }
+.file-explorer-entry-icon--lock .file-explorer-entry-icon__label { color: #9ca3af; }
+.file-explorer-entry-icon--npm .file-explorer-entry-icon__label { color: #cb3837; }
+.file-explorer-entry-icon--git .file-explorer-entry-icon__label { color: #f05032; }
+.file-explorer-entry-icon--docker .file-explorer-entry-icon__label { color: #2496ed; }
+.file-explorer-entry-icon--default .file-explorer-entry-icon__label { color: #9ca3af; }
 
 .file-explorer-tree-node__name--git-new {
   color: #73c991;
@@ -340,6 +410,82 @@
 
 .file-explorer-tree-node--selected .file-explorer-tree-node__name--git-modified {
   color: #e2c08d;
+}
+
+.file-explorer-tree-node__name--git-deleted {
+  color: #f48771;
+  text-decoration: line-through;
+}
+
+.file-explorer-tree-node__name--git-staged {
+  color: #73b8f0;
+}
+
+.file-explorer-tree-node__name--git-conflict {
+  color: #ff6b6b;
+}
+
+.file-explorer-tree-node--multi-selected {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.file-explorer-tree-node__chevron-btn {
+  flex-shrink: 0;
+  width: 12px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.file-explorer-tree-node__rename-btn {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.file-explorer-tree-node__rename-btn--cancel:hover {
+  color: var(--danger);
+}
+
+.file-editor-panel__special {
+  padding: 16px;
+  text-align: center;
+}
+
+.file-editor-panel__special-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.file-editor-panel__special-hint {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.file-editor-panel__special-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface-hover);
+  color: var(--text);
+  cursor: pointer;
 }
 
 .file-explorer-tree-node--renaming {
@@ -591,4 +737,21 @@
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
   color: var(--accent);
+}
+
+.file-explorer-toast {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 10;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--text);
+  font-size: 9px;
+  line-height: 1.35;
+  cursor: pointer;
+  box-shadow: 0 4px 12px color-mix(in srgb, black 18%, transparent);
 }

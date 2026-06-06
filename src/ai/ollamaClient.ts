@@ -1,5 +1,8 @@
 import type { ProjectAiContextForAi } from '@shared/projectAiContext'
 import type { AgentShellPolicy } from '@shared/configSchema'
+import { buildRichContext, type MentionedFile } from './contextBuilder'
+
+export type { MentionedFile }
 import { GIT_MAX_COMMIT_MESSAGE_CHARS } from '@shared/gitSessionTypes'
 import {
   GIT_BLOCK_END,
@@ -582,17 +585,20 @@ export function buildChatSystemPrompt(
   agentMode = false,
   agentShellPolicy: AgentShellPolicy = 'off',
   interactionsLog: string[] = [],
+  mentionedFiles: MentionedFile[] = [],
 ): string {
-  return enrichSystemWithContext(
-    'You are an expert full-stack software developer helping inside an editor-integrated terminal session. Reply in clear, direct, concise English: prefer a few short sentences or bullets; avoid long paragraphs unless the user asks for more detail. ' +
-    'Additional sections in this system message (cwd, package.json, agent.md, prior summaries, recent session output) are supporting context and may be stale; always prioritize the latest user message and the current conversation.',
+  return buildRichContext({
+    baseInstruction:
+      'You are an expert full-stack software developer helping inside an editor-integrated terminal session. Reply in clear, direct, concise English: prefer a few short sentences or bullets; avoid long paragraphs unless the user asks for more detail. ' +
+      'Additional sections in this system message (cwd, package.json, agent.md, prior summaries, recent session output) are supporting context and may be stale; always prioritize the latest user message and the current conversation.',
     terminalContext,
     workspace,
-    agentMdMarkdown,
+    agentMd: agentMdMarkdown,
     agentMode,
     agentShellPolicy,
     interactionsLog,
-  )
+    mentionedFiles,
+  })
 }
 
 /**

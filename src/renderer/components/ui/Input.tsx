@@ -7,11 +7,16 @@ export type InputVariant = 'default' | 'inline'
 export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'className'> {
   size?: InputSize
   variant?: InputVariant
+  className?: string
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ size = 'md', variant = 'default', ...rest }, ref) => (
-    <input ref={ref} className={`input input--${size} input--${variant}`} {...rest} />
+  ({ size = 'md', variant = 'default', className = '', ...rest }, ref) => (
+    <input
+      ref={ref}
+      className={['input', `input--${size}`, `input--${variant}`, className].filter(Boolean).join(' ')}
+      {...rest}
+    />
   ),
 )
 Input.displayName = 'Input'

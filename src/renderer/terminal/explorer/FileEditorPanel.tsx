@@ -1,18 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useT } from '@i18n/useT'
 import { Icon } from '../../components/ui/Icon'
 import { Input } from '../../components/ui/Input'
 import { Spinner } from '../../components/ui/Spinner'
 import { FileCodeEditor, type FileCodeEditorHandle } from './FileCodeEditor'
+import { fileExplorerErrorMessage } from './fileExplorerErrorI18n'
 
 const SAVE_SHORTCUT_LABEL =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
     ? '⌘S'
     : 'Ctrl+S'
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 interface FileEditorPanelProps {
   sessionId: string
   themeId: string
   selectedPath: string | null
+  /** Incrementar para recargar desde disco si el archivo no está dirty. */
+  fsReloadToken?: number
   onFileSaved?: () => void
   onDirtyChange?: (dirty: boolean) => void
   onClose?: () => void
@@ -22,10 +32,12 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
   sessionId,
   themeId,
   selectedPath,
+  fsReloadToken = 0,
   onFileSaved,
   onDirtyChange,
   onClose,
 }) => {
+  const { t } = useT()
   const [loading, setLoading] = useState(false)
   const [draftContent, setDraftContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
@@ -34,14 +46,16 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
   const [saving, setSaving] = useState(false)
   const [findQuery, setFindQuery] = useState('')
   const [matchCount, setMatchCount] = useState(0)
+  const [isBinary, setIsBinary] = useState(false)
+  const [largeFileInfo, setLargeFileInfo] = useState<{ sizeBytes: number; maxBytes: number } | null>(null)
   const editorRef = useRef<FileCodeEditorHandle>(null)
   const findInputRef = useRef<HTMLInputElement>(null)
 
   const isDirty = draftContent !== savedContent
   const saveHint = useMemo(() => {
-    if (saving) return 'Guardando…'
-    return `Guardar · ${SAVE_SHORTCUT_LABEL}`
-  }, [saving])
+    if (saving) return t('common.saving')
+    return `${t('fileExplorer.editor.saveHint')} · ${SAVE_SHORTCUT_LABEL}`
+  }, [saving, t])
 
   useEffect(() => {
     onDirtyChange?.(isDirty)
@@ -50,6 +64,8 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
   useEffect(() => {
     setFindQuery('')
     setMatchCount(0)
+    setIsBinary(false)
+    setLargeFileInfo(null)
   }, [selectedPath])
 
   const focusFindInput = useCallback(() => {
@@ -57,43 +73,68 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
     findInputRef.current?.select()
   }, [])
 
+  const loadGenRef = useRef(0)
+
+  const loadFile = useCallback(async (allowLarge = false, pathOverride?: string): Promise<void> => {
+    const path = pathOverride ?? selectedPath
+    if (!path) return
+    const gen = ++loadGenRef.current
+    setLoading(true)
+    setError(null)
+    setSaveError(null)
+    setIsBinary(false)
+    setLargeFileInfo(null)
+    try {
+      const payload = await window.api.fileExplorerLoadFile(
+        sessionId,
+        path,
+        allowLarge ? { allowLarge: true } : undefined,
+      )
+      if (gen !== loadGenRef.current) return
+      if (!payload.ok) {
+        if (payload.code === 'FILE_TOO_LARGE' && payload.sizeBytes && payload.maxBytes) {
+          setLargeFileInfo({ sizeBytes: payload.sizeBytes, maxBytes: payload.maxBytes })
+          setDraftContent('')
+          setSavedContent('')
+          return
+        }
+        setError(fileExplorerErrorMessage(t, payload.error, payload.code, {
+          max: payload.maxBytes ? formatBytes(payload.maxBytes) : '600 KB',
+        }))
+        setDraftContent('')
+        setSavedContent('')
+        return
+      }
+      if (payload.binary) {
+        setIsBinary(true)
+        setDraftContent('')
+        setSavedContent('')
+        return
+      }
+      const text = payload.content ?? ''
+      setDraftContent(text)
+      setSavedContent(text)
+    } finally {
+      if (gen === loadGenRef.current) setLoading(false)
+    }
+  }, [sessionId, selectedPath, t])
+
   useEffect(() => {
     if (!selectedPath) {
+      loadGenRef.current += 1
       setDraftContent('')
       setSavedContent('')
       setError(null)
       setSaveError(null)
       return
     }
+    void loadFile()
+  }, [selectedPath, loadFile])
 
-    let cancelled = false
-    const doLoad = async (): Promise<void> => {
-      setLoading(true)
-      setError(null)
-      setSaveError(null)
-      try {
-        const payload = await window.api.fileExplorerLoadFile(sessionId, selectedPath)
-        if (cancelled) return
-        if (!payload.ok) {
-          setError(payload.error ?? 'No se pudo cargar el archivo')
-          setDraftContent('')
-          setSavedContent('')
-          return
-        }
-        const text = payload.content ?? ''
-        setDraftContent(text)
-        setSavedContent(text)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    void doLoad()
-
-    return () => {
-      cancelled = true
-    }
-  }, [sessionId, selectedPath])
+  useEffect(() => {
+    if (!fsReloadToken || !selectedPath || draftContent !== savedContent) return
+    void loadFile()
+  }, [fsReloadToken, selectedPath, draftContent, savedContent, loadFile])
 
   const handleSave = useCallback(async () => {
     if (!selectedPath || !isDirty || saving) return
@@ -102,17 +143,17 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
     const result = await window.api.fileExplorerSaveFile(sessionId, selectedPath, draftContent)
     setSaving(false)
     if (!result.ok) {
-      setSaveError(result.error ?? 'No se pudo guardar el archivo')
+      setSaveError(fileExplorerErrorMessage(t, result.error, result.code))
       return
     }
     setSavedContent(draftContent)
     onFileSaved?.()
-  }, [sessionId, selectedPath, draftContent, isDirty, saving, onFileSaved])
+  }, [sessionId, selectedPath, draftContent, isDirty, saving, onFileSaved, t])
 
   if (!selectedPath) {
     return (
       <div className="file-editor-panel file-editor-panel--empty">
-        <p className="file-editor-panel__hint">Selecciona un archivo del árbol.</p>
+        <p className="file-editor-panel__hint">{t('fileExplorer.editor.selectHint')}</p>
       </div>
     )
   }
@@ -129,20 +170,20 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
         >
           {selectedPath}
           {isDirty && (
-            <span className="file-editor-panel__unsaved" title="Cambios sin guardar">
+            <span className="file-editor-panel__unsaved" title={t('fileExplorer.editor.unsaved')}>
               {' '}•
             </span>
           )}
         </code>
-        <span className="file-editor-panel__save-hint" title={`Atajo: ${SAVE_SHORTCUT_LABEL}`}>
+        <span className="file-editor-panel__save-hint" title={`${SAVE_SHORTCUT_LABEL}`}>
           {saveHint}
         </span>
         {onClose && (
           <button
             type="button"
             className="file-explorer-tree__tool-btn file-explorer-tree__tool-btn--close"
-            title="Cerrar archivo"
-            aria-label="Cerrar visualizador de archivo"
+            title={t('fileExplorer.editor.closeFile')}
+            aria-label={t('fileExplorer.editor.closeFileAria')}
             onClick={onClose}
           >
             <Icon name="close" size={9} aria-hidden />
@@ -153,7 +194,38 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
       <div className="file-editor-panel__body">
         {loading && (
           <div className="file-editor-panel__loading">
-            <Spinner aria-label="Cargando archivo" />
+            <Spinner aria-label={t('fileExplorer.editor.loading')} />
+          </div>
+        )}
+        {!loading && largeFileInfo && (
+          <div className="file-editor-panel__special">
+            <p className="file-editor-panel__special-title">{t('fileExplorer.editor.largeFileTitle')}</p>
+            <p className="file-editor-panel__special-hint">
+              {t('fileExplorer.editor.largeFileHint', {
+                size: formatBytes(largeFileInfo.sizeBytes),
+                max: formatBytes(largeFileInfo.maxBytes),
+              })}
+            </p>
+            <button
+              type="button"
+              className="file-editor-panel__special-btn"
+              onClick={() => { void loadFile(true) }}
+            >
+              {t('fileExplorer.editor.openLargeAnyway')}
+            </button>
+          </div>
+        )}
+        {!loading && isBinary && (
+          <div className="file-editor-panel__special">
+            <p className="file-editor-panel__special-title">{t('fileExplorer.editor.binaryTitle')}</p>
+            <p className="file-editor-panel__special-hint">{t('fileExplorer.editor.binaryHint')}</p>
+            <button
+              type="button"
+              className="file-editor-panel__special-btn"
+              onClick={() => { void window.api.fileExplorerReveal(sessionId, selectedPath) }}
+            >
+              {t('fileExplorer.editor.revealBinary')}
+            </button>
           </div>
         )}
         {!loading && error && (
@@ -162,7 +234,7 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
         {!loading && saveError && (
           <p className="file-editor-panel__error" role="alert">{saveError}</p>
         )}
-        {!loading && !error && (
+        {!loading && !error && !isBinary && !largeFileInfo && (
           <FileCodeEditor
             ref={editorRef}
             key={selectedPath}
@@ -178,7 +250,7 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
         )}
       </div>
 
-      {!loading && !error && (
+      {!loading && !error && !isBinary && !largeFileInfo && (
         <div className="file-editor-panel__search" role="search">
           <div className="file-editor-panel__search-field">
             <Input
@@ -190,11 +262,8 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
               onKeyDown={e => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  if (e.shiftKey) {
-                    editorRef.current?.findPrevious()
-                  } else {
-                    editorRef.current?.findNext()
-                  }
+                  if (e.shiftKey) editorRef.current?.findPrevious()
+                  else editorRef.current?.findNext()
                 }
                 if (e.key === 'Escape') {
                   e.preventDefault()
@@ -202,22 +271,24 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
                   e.currentTarget.blur()
                 }
               }}
-              placeholder="Buscar en el archivo…"
-              aria-label="Buscar en el archivo"
+              placeholder={t('fileExplorer.editor.findPlaceholder')}
+              aria-label={t('fileExplorer.editor.findAria')}
               spellCheck={false}
               autoComplete="off"
             />
           </div>
           {findQuery.trim() !== '' && (
             <span className="file-editor-panel__search-meta" aria-live="polite">
-              {matchCount === 0 ? 'Sin coincidencias' : `${matchCount} coincidencia${matchCount === 1 ? '' : 's'}`}
+              {matchCount === 0
+                ? t('fileExplorer.editor.noMatches')
+                : t('fileExplorer.editor.matchCount', { count: matchCount })}
             </span>
           )}
           <button
             type="button"
             className="file-editor-panel__search-nav file-editor-panel__search-nav--up"
-            title="Coincidencia anterior (Shift+Enter)"
-            aria-label="Coincidencia anterior"
+            title="Shift+Enter"
+            aria-label={t('fileExplorer.editor.findAria')}
             disabled={!findQuery.trim() || matchCount === 0}
             onClick={() => editorRef.current?.findPrevious()}
           >
@@ -226,8 +297,8 @@ export const FileEditorPanel: React.FC<FileEditorPanelProps> = ({
           <button
             type="button"
             className="file-editor-panel__search-nav"
-            title="Siguiente coincidencia (Enter)"
-            aria-label="Siguiente coincidencia"
+            title="Enter"
+            aria-label={t('fileExplorer.editor.findAria')}
             disabled={!findQuery.trim() || matchCount === 0}
             onClick={() => editorRef.current?.findNext()}
           >

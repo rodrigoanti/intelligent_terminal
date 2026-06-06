@@ -21,6 +21,7 @@ export type IconName =
   | 'sparkles'
   | 'files'
   | 'chevron-right'
+  | 'refresh'
 
 interface IconProps {
   name: IconName
@@ -51,13 +52,13 @@ const ICONS: Record<IconName, IconRenderer> = {
     </svg>
   ),
   folder: size => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
     </svg>
   ),
   'folder-filled': size => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+      <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V10h16v8z" />
     </svg>
   ),
   terminal: size => (
@@ -83,7 +84,7 @@ const ICONS: Record<IconName, IconRenderer> = {
   ),
   'chevron-right': size => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 6l6 6-6" />
+      <path d="M9 6l6 6-6 6" />
     </svg>
   ),
   files: size => (
@@ -163,6 +164,14 @@ const ICONS: Record<IconName, IconRenderer> = {
       <path d="M22 5h-4" />
       <path d="M4 17v2" />
       <path d="M5 18H3" />
+    </svg>
+  ),
+  refresh: size => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 2v6h-6" />
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M3 22v-6h6" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
     </svg>
   ),
 }

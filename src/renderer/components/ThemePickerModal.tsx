@@ -109,6 +109,7 @@ export const ThemePickerModal: React.FC<Props> = ({
           <Input
             type="search"
             size="md"
+            className="theme-picker-filter"
             value={filter}
             onChange={e => setFilter(e.target.value)}
             placeholder={t('themePicker.filterPlaceholder')}

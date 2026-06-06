@@ -24,11 +24,13 @@ import { AiMessage } from './AiMessage'
 import type { AiMessageEntry } from './AiMessage'
 import { AiInputArea } from './AiInputArea'
 import { AiEmptyState } from './AiEmptyState'
+import { useAiMessagesFollowScroll } from './ai/useAiMessagesFollowScroll'
 import './AiPanel.css'
 
 const MAX_INTERACTIONS_LOG_ENTRIES = 120
 const MAX_HISTORY_MESSAGES = 20
 const MAX_HISTORY_MSG_CHARS = 4000
+const MAX_LOOP_ITERATIONS = 10
 
 /**
  * Proveedores que usan tool calling nativo en modo agente.
@@ -102,7 +104,10 @@ export const AiPanel: React.FC<Props> = ({
 
   const confirmShell = useCallback((cmd: string) => {
     return new Promise<boolean>(resolve => {
-      setShellPrompt({ cmd, resolve })
+      setShellPrompt(prev => {
+        if (prev) prev.resolve(false)
+        return { cmd, resolve }
+      })
     })
   }, [])
 
@@ -176,7 +181,18 @@ export const AiPanel: React.FC<Props> = ({
   }, [expanded])
 
   const workspaceForPrompt = useCallback(async (): Promise<ProjectAiContextForAi | null> => {
-    try { return await window.api.getProjectAiContext(sessionId) } catch { return null }
+    try {
+      const workspace = await window.api.getProjectAiContext(sessionId)
+      if (!workspace) return null
+      let folderTree: string | null = null
+      try {
+        const tree = await window.api.getAgentFolderTree(sessionId)
+        folderTree = tree?.trim() ? tree : null
+      } catch { /* non-critical */ }
+      return { ...workspace, folderTree }
+    } catch {
+      return null
+    }
   }, [sessionId])
 
   /** Carga la lista de archivos para @mentions de forma lazy (no bloquea el envío). */
@@ -210,6 +226,26 @@ export const AiPanel: React.FC<Props> = ({
   )
 
   useEffect(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    aiRequestInFlightRef.current = false
+    loopActiveRef.current = false
+    setLoopActive(false)
+    loopTaskRef.current = null
+    setMessages([])
+    setInteractionsLog([])
+    setChatLoaded(false)
+    setError(null)
+    setLoading(false)
+    setShellPrompt(prev => {
+      if (prev) prev.resolve(false)
+      return null
+    })
+    if (chatSaveTimerRef.current) {
+      clearTimeout(chatSaveTimerRef.current)
+      chatSaveTimerRef.current = null
+    }
+
     void Promise.all([
       window.api.loadAiChat(sessionId),
       window.api.loadInteractionsLog(sessionId),
@@ -252,22 +288,7 @@ export const AiPanel: React.FC<Props> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatLoaded])
 
-  useEffect(() => {
-    const el = messagesScrollRef.current
-    if (!el) return
-    const streaming = messages.some(m => m.isStreaming)
-    requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: streaming ? 'auto' : 'smooth' })
-    })
-  }, [messages])
-
-  useEffect(() => {
-    if (!expanded) return
-    requestAnimationFrame(() => {
-      const el = messagesScrollRef.current
-      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
-    })
-  }, [expanded])
+  useAiMessagesFollowScroll(messages, expanded, messagesScrollRef)
 
   function addEntry(role: AiMessageEntry['role'], content: string, isStreaming = false): string {
     const id = crypto.randomUUID()
@@ -472,14 +493,16 @@ export const AiPanel: React.FC<Props> = ({
     setInput('')
 
     let isFirst = true
+    let loopIterations = 0
     try {
-      while (true) {
+      while (loopActiveRef.current && loopIterations < MAX_LOOP_ITERATIONS) {
         const task = loopTaskRef.current ?? { text, mentionedFiles }
         const result = await executeChatTurn(task.text, task.mentionedFiles, {
           addUserBubble: isFirst,
           isLoopIteration: !isFirst,
         })
         isFirst = false
+        loopIterations += 1
         if (result !== 'ok' || !loopActiveRef.current) break
       }
     } finally {
@@ -500,7 +523,13 @@ export const AiPanel: React.FC<Props> = ({
     setLoopActive(false)
     loopTaskRef.current = null
     abortRef.current?.abort()
+    abortRef.current = null
+    aiRequestInFlightRef.current = false
     setLoading(false)
+    setShellPrompt(prev => {
+      if (prev) prev.resolve(false)
+      return null
+    })
   }
 
   function handleDeleteHistory(): void { setConfirmingDelete(true) }

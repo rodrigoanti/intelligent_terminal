@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { readFileSync, writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, unlinkSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { app } from 'electron'
 import type { TabSession } from '../src/renderer/App'
 import type { FileExplorerPersistedState } from '../src/shared/fileExplorerPersistedState'
@@ -32,7 +32,21 @@ export function loadSession(): PersistedSession | null {
     const raw = readFileSync(path, 'utf-8')
     const parsed = JSON.parse(raw) as Partial<PersistedSession>
     if (parsed.version !== 1 || !Array.isArray(parsed.tabs) || !parsed.activeTabId) return null
-    return parsed as PersistedSession
+    const tabs = parsed.tabs.filter(
+      t => t && typeof t.id === 'string' && Array.isArray(t.paneIds) && t.paneIds.length > 0,
+    )
+    if (tabs.length === 0) return null
+    const activeTabId = tabs.some(t => t.id === parsed.activeTabId)
+      ? parsed.activeTabId!
+      : tabs[0]!.id
+    return {
+      version: 1,
+      activeTabId,
+      tabs: tabs as TabSession[],
+      cwds: parsed.cwds ?? {},
+      aiExpandedByPane: parsed.aiExpandedByPane,
+      explorerByPane: parsed.explorerByPane,
+    }
   } catch {
     return null
   }
@@ -42,7 +56,9 @@ export function saveSession(data: PersistedSession): void {
   try {
     const path = SESSION_FILE()
     ensureDir(USER_DATA())
-    writeFileSync(path, JSON.stringify(data), 'utf-8')
+    const tmp = `${path}.tmp`
+    writeFileSync(tmp, JSON.stringify(data), 'utf-8')
+    renameSync(tmp, path)
   } catch { /* ignore */ }
 }
 

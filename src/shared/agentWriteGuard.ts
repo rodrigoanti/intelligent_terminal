@@ -43,6 +43,20 @@ export function pathLikelyRequested(userMessage: string, relPath: string): boole
   return false
 }
 
+const SENSITIVE_PATH_PATTERNS = [
+  /^\.env(\.|$)/i,
+  /\.pem$/i,
+  /^credentials/i,
+  /^\.git(\/|$)/i,
+  /^\.ssh(\/|$)/i,
+  /id_rsa/i,
+]
+
+export function isSensitiveWritePath(relPath: string): boolean {
+  const path = relPath.replace(/\\/g, '/').toLowerCase()
+  return SENSITIVE_PATH_PATTERNS.some(r => r.test(path))
+}
+
 /** Contenido que no es código real sino razonamiento o ejemplo roto del modelo. */
 export function isSuspiciousAgentWriteContent(content: string): boolean {
   const c = content.trim()
@@ -78,7 +92,7 @@ export function stripThinkingFromAgentReply(text: string): string {
  * Filtra operaciones WRITE: solo rutas pedidas por el usuario y contenido válido.
  */
 export function filterWritesByUserIntent(
-  _userMessage: string,
+  userMessage: string,
   writes: WriteOp[],
 ): WriteGuardResult {
   const rejected: Array<{ path: string; reason: string }> = []
@@ -86,7 +100,21 @@ export function filterWritesByUserIntent(
 
   if (writes.length === 0) return { allowed, rejected }
 
+  const wantsChanges = userWantsFileChanges(userMessage)
+
   for (const w of writes) {
+    if (!wantsChanges) {
+      rejected.push({ path: w.path, reason: 'el usuario no pidió cambios en archivos' })
+      continue
+    }
+    if (isSensitiveWritePath(w.path)) {
+      rejected.push({ path: w.path, reason: 'ruta sensible bloqueada' })
+      continue
+    }
+    if (!pathLikelyRequested(userMessage, w.path)) {
+      rejected.push({ path: w.path, reason: 'ruta no solicitada por el usuario' })
+      continue
+    }
     if (isSuspiciousAgentWriteContent(w.content)) {
       rejected.push({ path: w.path, reason: 'contenido inválido (parece razonamiento, no código)' })
       continue
@@ -106,6 +134,25 @@ export function filterPatchesByUserIntent(
   userMessage: string,
   patches: PatchOp[],
 ): PatchGuardResult {
-  const allowed: PatchOp[] = patches.slice()
-  return { allowed, rejected: [] }
+  const rejected: Array<{ path: string; reason: string }> = []
+  const allowed: PatchOp[] = []
+  const wantsChanges = userWantsFileChanges(userMessage)
+
+  for (const p of patches) {
+    if (!wantsChanges) {
+      rejected.push({ path: p.path, reason: 'el usuario no pidió cambios en archivos' })
+      continue
+    }
+    if (isSensitiveWritePath(p.path)) {
+      rejected.push({ path: p.path, reason: 'ruta sensible bloqueada' })
+      continue
+    }
+    if (!pathLikelyRequested(userMessage, p.path)) {
+      rejected.push({ path: p.path, reason: 'ruta no solicitada por el usuario' })
+      continue
+    }
+    allowed.push(p)
+  }
+
+  return { allowed, rejected }
 }

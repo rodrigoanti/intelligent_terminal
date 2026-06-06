@@ -74,6 +74,10 @@ export interface AppConfig {
   musicPlaylistIdsByMood?: Record<string, string>
   /** Idioma de la interfaz. */
   language: Language
+  /** Reiniciar shell automáticamente tras exit en un panel de terminal. */
+  autoRestartShell: boolean
+  /** Mood de música activo en la barra de título. */
+  musicMood?: string
 }
 
 export const DEFAULT_MODEL_BY_PROVIDER: Record<AiProvider, string> = {
@@ -97,6 +101,8 @@ export const CONFIG_DEFAULTS: AppConfig = {
   thinkingMode: false,
   musicPlaylistIdsByMood: {},
   language: 'en',
+  autoRestartShell: true,
+  musicMood: 'focus',
 }
 
 export function mergeWithDefaults(partial: Partial<AppConfig>): AppConfig {

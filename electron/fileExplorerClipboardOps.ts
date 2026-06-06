@@ -1,15 +1,25 @@
 import { clipboard } from 'electron'
 import { basename, extname, join, relative, resolve } from 'path'
-import { cpSync, existsSync, statSync } from 'fs'
+import { cpSync, existsSync, renameSync, rmSync, statSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { resolveSafeProjectPath } from './agentFileOps'
+import { FILE_EXPLORER_ERROR_CODES } from '../src/shared/fileExplorerErrorCodes'
+import type { FileExplorerClipboardResult } from '../src/shared/fileExplorerTypes'
 
-export type FileExplorerClipboardResult =
-  | { ok: true; count?: number }
-  | { ok: false; error: string }
+interface ClipboardEntry {
+  absPaths: string[]
+  mode: 'copy' | 'cut'
+}
 
-/** Rutas absolutas copiadas; compartido entre sesiones/pestañas. */
-let explorerClipboardAbsPaths: string[] = []
+const explorerClipboardBySession = new Map<string, ClipboardEntry>()
+
+function getClipboardEntry(sessionId: string): ClipboardEntry {
+  return explorerClipboardBySession.get(sessionId) ?? { absPaths: [], mode: 'copy' }
+}
+
+function setClipboardEntry(sessionId: string, entry: ClipboardEntry): void {
+  explorerClipboardBySession.set(sessionId, entry)
+}
 
 function resolveWorkingDir(cwdRaw: string): string | null {
   try {
@@ -61,19 +71,24 @@ function uniqueDestAbs(destDir: string, name: string): string {
   throw new Error('demasiados archivos con el mismo nombre')
 }
 
-function isPathInside(parentAbs: string, childAbs: string): boolean {
+export function isPathInside(parentAbs: string, childAbs: string): boolean {
   const rel = relative(parentAbs, childAbs)
   return rel !== '' && !rel.startsWith('..')
 }
 
+function storeClipboard(sessionId: string, absPaths: string[], mode: 'copy' | 'cut'): void {
+  setClipboardEntry(sessionId, { absPaths, mode })
+  clipboard.writeText(absPaths.join('\n'))
+}
+
 export function copyPathsForExplorer(
-  _sessionId: string,
+  sessionId: string,
   projectRootRaw: string,
   relPathsRaw: string[],
 ): FileExplorerClipboardResult {
   const projectRoot = resolveWorkingDir(projectRootRaw)
   if (!projectRoot) {
-    return { ok: false, error: 'cwd inválido' }
+    return { ok: false, error: 'cwd inválido', code: FILE_EXPLORER_ERROR_CODES.CWD_INVALID }
   }
 
   const absPaths: string[] = []
@@ -83,49 +98,62 @@ export function copyPathsForExplorer(
     if (!rel) continue
     const abs = resolveSafeProjectPath(projectRoot, rel)
     if (!abs || !existsSync(abs)) {
-      return { ok: false, error: `no existe: ${raw}` }
+      return { ok: false, error: `no existe: ${raw}`, code: FILE_EXPLORER_ERROR_CODES.NOT_FOUND }
     }
     absPaths.push(abs)
   }
 
   if (absPaths.length === 0) {
-    return { ok: false, error: 'nada seleccionado para copiar' }
+    return { ok: false, error: 'nada seleccionado para copiar', code: FILE_EXPLORER_ERROR_CODES.NOTHING_TO_COPY }
   }
 
-  explorerClipboardAbsPaths = absPaths
-  clipboard.writeText(absPaths.join('\n'))
-
+  storeClipboard(sessionId, absPaths, 'copy')
   return { ok: true, count: absPaths.length }
 }
 
+export function cutPathsForExplorer(
+  sessionId: string,
+  projectRootRaw: string,
+  relPathsRaw: string[],
+): FileExplorerClipboardResult {
+  const result = copyPathsForExplorer(sessionId, projectRootRaw, relPathsRaw)
+  if (result.ok) {
+    const entry = getClipboardEntry(sessionId)
+    setClipboardEntry(sessionId, { ...entry, mode: 'cut' })
+  }
+  return result
+}
+
 export function pasteIntoExplorer(
-  _sessionId: string,
+  sessionId: string,
   projectRootRaw: string,
   destRelPathRaw: string,
 ): FileExplorerClipboardResult {
   const projectRoot = resolveWorkingDir(projectRootRaw)
   if (!projectRoot) {
-    return { ok: false, error: 'cwd inválido' }
+    return { ok: false, error: 'cwd inválido', code: FILE_EXPLORER_ERROR_CODES.CWD_INVALID }
   }
 
   const destRel = normalizeRelPath(destRelPathRaw)
   const destDirAbs = destRel ? resolveSafeProjectPath(projectRoot, destRel) : projectRoot
   if (!destDirAbs) {
-    return { ok: false, error: 'carpeta de destino inválida' }
+    return { ok: false, error: 'carpeta de destino inválida', code: FILE_EXPLORER_ERROR_CODES.PATH_INVALID }
   }
 
   try {
     const st = statSync(destDirAbs)
     if (!st.isDirectory()) {
-      return { ok: false, error: 'el destino no es una carpeta' }
+      return { ok: false, error: 'el destino no es una carpeta', code: FILE_EXPLORER_ERROR_CODES.NOT_A_DIRECTORY }
     }
   } catch {
-    return { ok: false, error: 'carpeta de destino no encontrada' }
+    return { ok: false, error: 'carpeta de destino no encontrada', code: FILE_EXPLORER_ERROR_CODES.NOT_FOUND }
   }
 
+  const clipboardEntry = getClipboardEntry(sessionId)
   const sources: Array<{ srcAbs: string; name: string }> = []
+  let mode = clipboardEntry.mode
 
-  for (const abs of explorerClipboardAbsPaths) {
+  for (const abs of clipboardEntry.absPaths) {
     if (existsSync(abs)) {
       sources.push({ srcAbs: abs, name: basename(abs) })
     }
@@ -135,26 +163,40 @@ export function pasteIntoExplorer(
     for (const abs of readSystemClipboardAbsPaths()) {
       sources.push({ srcAbs: abs, name: basename(abs) })
     }
+    if (sources.length > 0) {
+      mode = 'copy'
+    }
   }
 
   if (sources.length === 0) {
-    return { ok: false, error: 'no hay nada en el portapapeles para pegar' }
+    return { ok: false, error: 'no hay nada en el portapapeles para pegar', code: FILE_EXPLORER_ERROR_CODES.NOTHING_TO_PASTE }
   }
 
   let pasted = 0
+  const movedSources: string[] = []
+
   for (const { srcAbs, name } of sources) {
     if (isPathInside(srcAbs, destDirAbs) || resolve(srcAbs) === resolve(destDirAbs)) {
-      return { ok: false, error: 'no se puede pegar dentro de la propia selección' }
+      return { ok: false, error: 'no se puede pegar dentro de la propia selección', code: FILE_EXPLORER_ERROR_CODES.PASTE_INTO_SELF }
     }
     const targetAbs = uniqueDestAbs(destDirAbs, name)
     try {
       const srcStat = statSync(srcAbs)
-      cpSync(srcAbs, targetAbs, srcStat.isDirectory() ? { recursive: true } : undefined)
+      if (mode === 'cut') {
+        renameSync(srcAbs, targetAbs)
+        movedSources.push(srcAbs)
+      } else {
+        cpSync(srcAbs, targetAbs, srcStat.isDirectory() ? { recursive: true } : undefined)
+      }
       pasted++
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      return { ok: false, error: msg }
+      return { ok: false, error: msg, code: FILE_EXPLORER_ERROR_CODES.PASTE_FAILED }
     }
+  }
+
+  if (mode === 'cut') {
+    setClipboardEntry(sessionId, { absPaths: [], mode: 'copy' })
   }
 
   return { ok: true, count: pasted }

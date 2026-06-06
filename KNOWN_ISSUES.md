@@ -34,6 +34,8 @@ Historial de fallos reproducibles en **Electron + macOS** (y en parte multiplata
 | `src/renderer/App.tsx` | Al cargar la config: **`normalizeThemeId(cfg.themeId)`**; si cambia el id, **`setConfig({ themeId })`** para persistir y evitar configs huérfanas. |
 | `src/renderer/terminal/TerminalPane.tsx` | **`writePtyDataWithFollowScroll(term, data, afterParsed?)`**: siempre pasa **callback** a `term.write()`; ahí se hace scroll al fondo cuando corresponde y **`scheduleTerminalCanvasRepaint`** (tras procesar la escritura). El callback va envuelto en **`try/catch`** para que **`scrollToBottom()`** no reviente si el viewport aún no tiene `dimensions` (dispose / carrera). Repintado al teclear en **`term.onData`** con **`termAlive`** y **`termRef.current === term`** en RAFs. Limpieza: **`termAlive = false`**, cancelar RAF pendiente, **`termRef`/`fitRef` → null** antes de **`term.dispose()`**. Tras **`PTY_EXIT`**, **re-lanzar shell** en el mismo `sessionId` si el panel sigue montado (ver **§2**). |
 | `src/renderer/terminal/TerminalPane.css` | **`isolation: isolate`** en `.terminal-container` para aislar la composición del área del canvas respecto al resto del chrome. |
+| `src/renderer/terminal/terminalCanvasRepaint.ts` | **`repaintTerminalCanvas`**: `syncScrollArea` + `refresh` + `clearTextureAtlas` tras fit/refit, botón ↓ o salida PTY. |
+| `src/renderer/terminal/terminalFitScheduler.ts` | Tras ajustar scroll en `fitTerminalPreserveScroll`, llama a **`repaintTerminalCanvas`** para evitar canvas negro sin cambio de filas visibles. |
 | `src/renderer/main.tsx` | Sin hoja global “liquid glass”; los temas restantes no fuerzan transparencia en la raíz para ese caso. |
 
 ### Regresiones que ya vimos
@@ -120,6 +122,33 @@ Si `~/Library/Application Support/AI Terminal/config.json` (ruta típica en macO
 2. Se llama a **`setConfig({ themeId: 'vscodeDark' })`** para **persistir** el cambio.
 
 El usuario puede elegir otro tema en el modal de temas.
+
+---
+
+## 6. Chat IA: salto de scroll al terminar la respuesta
+
+### Síntomas
+
+- Al finalizar el streaming en el panel IA expandido, la lista de mensajes (`.ai-messages`) **salta hacia arriba** en lugar de quedarse al fondo.
+- Suele ocurrir con **thinking** activo: al colapsarse el bloque `<details>` el contenido pierde altura en el mismo instante en que el efecto de scroll intentaba animar.
+
+### Causa
+
+| Área | Descripción |
+|------|-------------|
+| **Scroll animado** | `scrollTo({ behavior: 'smooth' })` al pasar `isStreaming` a `false` compite con un `scrollHeight` que acaba de encogerse; Chromium/Electron puede resetear `scrollTop` a `0` antes de animar. |
+| **Layout del thinking** | `AiThinkingBlock` cerraba el `<details>` en el mismo frame que el scroll final. |
+| **Refit del xterm (secundario)** | Si el dock IA colapsado cambia de altura y el terminal hace `fit()`, restaurar `viewportY` antiguo alejaba el viewport del prompt cuando el usuario seguía la salida. |
+
+### Mitigaciones
+
+| Archivo | Qué hace |
+|---------|----------|
+| `src/renderer/components/ai/aiMessagesScroll.ts` | Scroll instantáneo al fondo, clamp de `scrollTop`, doble `rAF`; `wasStreamingRef` fuerza un último scroll al terminar. |
+| `src/renderer/components/AiThinkingBlock.tsx` | Colapsa el bloque thinking **dos frames** después de fin de streaming. |
+| `src/renderer/terminal/terminalFitScheduler.ts` | Tras `fit()`, si `shouldFollowTerminalOutput` es true, usa `followTerminalOutput` en lugar de `scrollToLine(savedTop)`. |
+| `src/renderer/terminal/TerminalPane.tsx` | Al cambiar `--terminal-ai-dock-reserve` (dock colapsado), programa un `refit` del xterm en el frame siguiente para realinear scroll tras el cambio de padding. |
+| `src/renderer/components/ai/useAiMessagesFollowScroll.ts` | Hook del auto-scroll del chat (streaming + último frame al terminar). |
 
 ---
 

@@ -1,5 +1,12 @@
 import type { Terminal } from '@xterm/xterm'
-import { clearUserScrolling, type TerminalFollowState } from './terminalFollowScroll'
+import {
+  clearUserScrolling,
+  FOLLOW_SLACK_LINES,
+  isProgrammaticScroll,
+  runWithProgrammaticScroll,
+  shouldFollowTerminalOutput,
+  type TerminalFollowState,
+} from './terminalFollowScroll'
 
 /** Margen en px para considerar el viewport DOM «abajo del todo». */
 const DOM_VIEWPORT_BOTTOM_EPS_PX = 4
@@ -39,16 +46,44 @@ const SCROLLABLE_ANCESTOR_SELECTOR = [
   '.file-explorer-tree',
   '.file-code-editor .cm-scroller',
   '.git-panel-scroll',
+  '.git-panel-files',
+  '.git-diff-blocks__pre',
+  '.git-panel-log',
+  '.gh-actions-panel__body',
   '.theme-picker-scroll',
 ].join(', ')
+
+function overflowYAllowsScroll(overflowY: string): boolean {
+  return overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay'
+}
+
+/** Primer ancestro con overflow desplazable que aún puede absorber el gesto. */
+export function findWheelConsumingScrollableAncestor(
+  target: HTMLElement | null,
+  deltaY: number,
+): HTMLElement | null {
+  let el: HTMLElement | null = target
+  while (el) {
+    const { overflowY } = getComputedStyle(el)
+    if (overflowYAllowsScroll(overflowY) && elementCanConsumeWheelScroll(el, deltaY)) {
+      return el
+    }
+    el = el.parentElement
+  }
+  return null
+}
 
 /** ¿Debemos enviar la rueda al buffer de xterm en lugar del scroll nativo del DOM? */
 export function shouldForwardWheelToTerminal(target: HTMLElement | null, deltaY: number): boolean {
   if (!target) return false
   if (target.closest('.xterm')) return false
+  // Modales dentro del pane (p. ej. Git): el scroll nativo no debe ir al buffer PTY.
+  if (target.closest('.terminal-modal-backdrop')) return false
 
   const scrollable = target.closest(SCROLLABLE_ANCESTOR_SELECTOR) as HTMLElement | null
   if (scrollable && elementCanConsumeWheelScroll(scrollable, deltaY)) return false
+
+  if (findWheelConsumingScrollableAncestor(target, deltaY)) return false
 
   return true
 }
@@ -95,21 +130,31 @@ export function reconcileTerminalScrollIfDomAtBottom(
   term: Terminal,
   followState?: TerminalFollowState,
 ): void {
+  if (isProgrammaticScroll()) return
   if (followState?.userDetached) return
+  // Durante auto-follow el callback de term.write ya ajusta el viewport;
+  // reconcile aquí compite y produce saltos al streamear salida del PTY.
+  if (followState && shouldFollowTerminalOutput(term, followState)) return
   const viewportEl = getTerminalViewportElement(term)
   if (!viewportEl || !isDomViewportAtBottom(viewportEl) || isBufferAtBottom(term)) return
   try {
-    clearUserScrolling(term)
-    term.scrollToBottom()
+    runWithProgrammaticScroll(() => {
+      clearUserScrolling(term)
+      term.scrollToBottom()
+    })
   } catch {
     /* dispose / dimensions */
   }
 }
 
-export function isTerminalScrolledUp(term: Terminal): boolean {
+/** Misma holgura que `userDetached` / auto-follow: evita parpadeo del botón ↓ al streamear. */
+export function isTerminalScrolledUp(
+  term: Terminal,
+  slackLines = FOLLOW_SLACK_LINES,
+): boolean {
   try {
     const buf = term.buffer.active
-    return buf.type === 'normal' && buf.viewportY < buf.baseY
+    return buf.type === 'normal' && buf.viewportY < buf.baseY - slackLines
   } catch {
     return false
   }

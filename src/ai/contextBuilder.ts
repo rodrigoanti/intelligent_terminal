@@ -155,7 +155,7 @@ npm install
 Rules:
 - **Scope:** Only WRITE files the user named in their latest message. Questions/explanations → text only, no WRITE.
 - Do not fix unrelated files (e.g. do not edit ollamaClient.ts when the user only asked for README).
-- **Explore:** LIST / GLOB / GREP → READ (or `path:10-80`) → PATCH (small edits) or WRITE (new/full file).
+- **Explore:** LIST / GLOB / GREP → READ (or path:10-80) → PATCH (small edits) or WRITE (new/full file).
 - Blocks: LIST, GLOB, GREP, GIT (status|diff|diff-staged), READ, RUN — follow-up with results; PATCH/WRITE applied at end.
 - PATCH: <<<AI_TERMINAL_PATCH path="...">>> then <<<< SEARCH / ==== / >>>> REPLACE <<<END_AI_TERMINAL_PATCH>>>
 - WRITE blocks are applied at the end of the response — do NOT expect a follow-up.

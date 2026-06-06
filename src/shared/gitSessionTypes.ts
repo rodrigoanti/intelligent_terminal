@@ -1,3 +1,5 @@
+import type { GitErrorCode } from './gitErrorCodes'
+
 /** Máximo de bytes devueltos para diff/stat en UI y para prompts de IA (truncado con sufijo). */
 export const GIT_MAX_OUTPUT_BYTES = 200_000
 
@@ -28,10 +30,15 @@ export interface GitRepoStatus {
   diffStat?: string
   /** `git diff --cached --stat` truncado */
   stagedDiffStat?: string
+  /** `git diff --numstat` truncado (insertions/deletions por archivo) */
+  diffNumStat?: string
+  /** `git diff --cached --numstat` truncado */
+  stagedDiffNumStat?: string
   hasStaged: boolean
   hasUnstaged: boolean
   /** Si no es repo o error al ejecutar git */
   error?: string
+  errorCode?: GitErrorCode
 }
 
 export interface GitCommandResult {
@@ -39,6 +46,7 @@ export interface GitCommandResult {
   exitCode: number | null
   stdout: string
   stderr: string
+  errorCode?: GitErrorCode
 }
 
 export interface GitDiffForAiPayload {

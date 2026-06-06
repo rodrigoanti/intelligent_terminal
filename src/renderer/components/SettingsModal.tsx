@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { AppConfig, AiProvider, Language } from '@shared/configSchema'
 import { validateConfig, mergeWithDefaults, parseSpotifyPlaylistId, DEFAULT_MODEL_BY_PROVIDER } from '@shared/configSchema'
 import { MUSIC_MOODS } from '@shared/musicMoods'
@@ -40,6 +40,19 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   })
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+
+  useEffect(() => {
+    setForm({
+      aiProvider: config.aiProvider,
+      ollamaBaseURL: config.ollamaBaseURL,
+      anthropicApiKey: config.anthropicApiKey,
+      openaiApiKey: config.openaiApiKey,
+      defaultModel: config.defaultModel,
+      maxContextLines: String(config.maxContextLines),
+      language: config.language,
+      musicPlaylistIdsByMood: { ...(config.musicPlaylistIdsByMood ?? {}) },
+    })
+  }, [config])
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]): void {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -215,7 +228,9 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         <p className="settings-hint settings-hint--block">{t('settings.configHint')}</p>
         <Button variant="secondary" size="sm" onClick={() => window.api.openConfigFolder()}>
           <Icon name="folder" size={12} />
-          {t('settings.revealConfig')}
+          {typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+            ? t('settings.revealConfig')
+            : t('settings.revealConfigWin')}
         </Button>
       </SettingsSection>
 

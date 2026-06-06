@@ -25,12 +25,14 @@ export const OllamaSection: React.FC<Props> = ({
 
   const showSelect = !error && (loading || models.length > 0)
   const showManualInput = Boolean(error || (!loading && models.length === 0))
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+  const urlHint = isMac ? t('settings.ollamaUrlHint') : t('settings.ollamaUrlHintWin')
 
   return (
     <>
       <SettingsField
         label={t('settings.ollamaUrlLabel')}
-        hint={<>{t('settings.ollamaUrlHint')}</>}
+        hint={<>{urlHint}</>}
       >
         <Input
           type="text"

@@ -48,10 +48,14 @@ import {
   gitPull,
   gitPush,
   gitStageAll,
+  gitStageFile,
+  gitUnstageAll,
+  gitUnstageFile,
 } from './gitSessionOps'
 import { githubActionsListForSession } from './githubActionsOps'
 import {
   copyPathsForExplorer,
+  cutPathsForExplorer,
   pasteIntoExplorer,
 } from './fileExplorerClipboardOps'
 import {
@@ -60,9 +64,17 @@ import {
   deletePathForExplorer,
   listDirChildren,
   loadFileForExplorer,
+  movePathForExplorer,
   renamePathForExplorer,
+  revealPathForExplorer,
   saveFileForExplorer,
+  searchProjectFiles,
 } from './fileExplorerOps'
+import {
+  startFileExplorerWatch,
+  stopAllFileExplorerWatches,
+  stopFileExplorerWatch,
+} from './fileExplorerWatcher'
 import { readCdRecentFolders } from './cdRecentMd'
 import {
   clearPersistedSessionCwd,
@@ -133,6 +145,7 @@ const ptySessions = new Map<string, PtyEntry>()
 let userRequestedAppQuit = false
 app.on('before-quit', () => {
   userRequestedAppQuit = true
+  stopAllFileExplorerWatches()
 })
 
 function sendToWindow(windowId: number, channel: string, ...args: unknown[]): void {
@@ -373,33 +386,73 @@ function registerIpc(): void {
     return gitDiffForAi(projectRootForSession(sessionId))
   })
   ipcMain.handle(IPC.GIT_PULL, (_e, sessionId: string) => {
-    return gitPull(projectRootForSession(sessionId))
+    const result = gitPull(projectRootForSession(sessionId))
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    win?.webContents.send(IPC.GIT_STATUS_CHANGED, sessionId)
+    return result
   })
   ipcMain.handle(IPC.GIT_PUSH, (_e, sessionId: string) => {
-    return gitPush(projectRootForSession(sessionId))
+    const result = gitPush(projectRootForSession(sessionId))
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    win?.webContents.send(IPC.GIT_STATUS_CHANGED, sessionId)
+    return result
   })
   ipcMain.handle(IPC.GIT_COMMIT, (_e, sessionId: string, message: unknown) => {
-    return gitCommit(projectRootForSession(sessionId), message)
+    const result = gitCommit(projectRootForSession(sessionId), message)
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    win?.webContents.send(IPC.GIT_STATUS_CHANGED, sessionId)
+    return result
   })
   ipcMain.handle(IPC.GIT_STAGE_ALL, (_e, sessionId: string) => {
-    return gitStageAll(projectRootForSession(sessionId))
+    const result = gitStageAll(projectRootForSession(sessionId))
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    win?.webContents.send(IPC.GIT_STATUS_CHANGED, sessionId)
+    return result
+  })
+  ipcMain.handle(IPC.GIT_STAGE_FILE, (_e, sessionId: string, relPath: unknown) => {
+    const result = gitStageFile(projectRootForSession(sessionId), relPath)
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    win?.webContents.send(IPC.GIT_STATUS_CHANGED, sessionId)
+    return result
+  })
+  ipcMain.handle(IPC.GIT_UNSTAGE_ALL, (_e, sessionId: string) => {
+    const result = gitUnstageAll(projectRootForSession(sessionId))
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    win?.webContents.send(IPC.GIT_STATUS_CHANGED, sessionId)
+    return result
+  })
+  ipcMain.handle(IPC.GIT_UNSTAGE_FILE, (_e, sessionId: string, relPath: unknown) => {
+    const result = gitUnstageFile(projectRootForSession(sessionId), relPath)
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    win?.webContents.send(IPC.GIT_STATUS_CHANGED, sessionId)
+    return result
   })
 
   ipcMain.handle(IPC.GITHUB_ACTIONS_LIST, (_e, sessionId: string) => {
     return githubActionsListForSession(projectRootForSession(sessionId))
   })
 
-  ipcMain.handle(IPC.FILE_EXPLORER_LIST_DIR, (_e, sessionId: string, relPath: unknown) => {
-    const rp = typeof relPath === 'string' ? relPath : ''
-    return listDirChildren(projectRootForSession(sessionId), rp)
-  })
+  ipcMain.handle(
+    IPC.FILE_EXPLORER_LIST_DIR,
+    (_e, sessionId: string, relPath: unknown, showHiddenDirs: unknown) => {
+      const rp = typeof relPath === 'string' ? relPath : ''
+      const showHidden = showHiddenDirs !== false
+      return listDirChildren(projectRootForSession(sessionId), rp, showHidden)
+    },
+  )
 
-  ipcMain.handle(IPC.FILE_EXPLORER_LOAD_FILE, (_e, sessionId: string, relPath: unknown) => {
-    if (typeof relPath !== 'string' || !relPath.trim()) {
-      return { ok: false, relPath: '', error: 'ruta vacía' }
-    }
-    return loadFileForExplorer(projectRootForSession(sessionId), relPath)
-  })
+  ipcMain.handle(
+    IPC.FILE_EXPLORER_LOAD_FILE,
+    (_e, sessionId: string, relPath: unknown, options: unknown) => {
+      if (typeof relPath !== 'string' || !relPath.trim()) {
+        return { ok: false, relPath: '', error: 'ruta vacía' }
+      }
+      const opts = options && typeof options === 'object'
+        ? { allowLarge: (options as { allowLarge?: boolean }).allowLarge === true }
+        : undefined
+      return loadFileForExplorer(projectRootForSession(sessionId), relPath, opts)
+    },
+  )
 
   ipcMain.handle(
     IPC.FILE_EXPLORER_SAVE_FILE,
@@ -464,6 +517,55 @@ function registerIpc(): void {
       )
     },
   )
+
+  ipcMain.handle(IPC.FILE_EXPLORER_CUT, (_e, sessionId: string, relPaths: unknown) => {
+    if (!Array.isArray(relPaths)) {
+      return { ok: false, error: 'rutas inválidas' }
+    }
+    const paths = relPaths.filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+    return cutPathsForExplorer(sessionId, projectRootForSession(sessionId), paths)
+  })
+
+  ipcMain.handle(
+    IPC.FILE_EXPLORER_MOVE,
+    (_e, sessionId: string, oldRelPath: unknown, newRelPath: unknown) => {
+      if (typeof oldRelPath !== 'string' || !oldRelPath.trim()) {
+        return { ok: false, error: 'ruta vacía' }
+      }
+      if (typeof newRelPath !== 'string' || !newRelPath.trim()) {
+        return { ok: false, error: 'nombre inválido' }
+      }
+      return movePathForExplorer(
+        projectRootForSession(sessionId),
+        oldRelPath,
+        newRelPath,
+      )
+    },
+  )
+
+  ipcMain.handle(IPC.FILE_EXPLORER_SEARCH, (_e, sessionId: string, query: unknown) => {
+    return searchProjectFiles(projectRootForSession(sessionId), query)
+  })
+
+  ipcMain.handle(IPC.FILE_EXPLORER_REVEAL, (_e, sessionId: string, relPath: unknown) => {
+    if (typeof relPath !== 'string' || !relPath.trim()) {
+      return { ok: false, error: 'ruta vacía' }
+    }
+    const result = revealPathForExplorer(projectRootForSession(sessionId), relPath)
+    if (result.ok) {
+      shell.showItemInFolder(result.absPath)
+    }
+    return result
+  })
+
+  ipcMain.on(IPC.FILE_EXPLORER_WATCH_START, (_e, sessionId: string) => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null
+    startFileExplorerWatch(sessionId, projectRootForSession(sessionId), win)
+  })
+
+  ipcMain.on(IPC.FILE_EXPLORER_WATCH_STOP, (_e, sessionId: string) => {
+    stopFileExplorerWatch(sessionId)
+  })
 
   ipcMain.handle(IPC.SESSION_LOAD, (): PersistedSession | null => loadSession())
 
@@ -576,6 +678,7 @@ function registerIpc(): void {
   ipcMain.on(IPC.PTY_KILL, (_e, sessionId: string) => {
     killPty(sessionId)
     clearPersistedSessionCwd(sessionId)
+    stopFileExplorerWatch(sessionId)
   })
 }
 
@@ -650,7 +753,13 @@ function createWindow(): BrowserWindow {
   })
 
   win.on('closed', () => {
-    for (const id of [...ptySessions.keys()]) killPty(id)
+    const closedWinId = win.id
+    for (const [id, entry] of [...ptySessions.entries()]) {
+      if (entry.windowId === closedWinId) {
+        killPty(id)
+        stopFileExplorerWatch(id)
+      }
+    }
   })
 
   return win

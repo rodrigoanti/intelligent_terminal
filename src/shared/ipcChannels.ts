@@ -59,6 +59,9 @@ export const IPC = {
   GIT_PUSH: 'git:push',
   GIT_COMMIT: 'git:commit',
   GIT_STAGE_ALL: 'git:stageAll',
+  GIT_STAGE_FILE: 'git:stageFile',
+  GIT_UNSTAGE_ALL: 'git:unstageAll',
+  GIT_UNSTAGE_FILE: 'git:unstageFile',
 
   /** Renderer → main (invoke): workflow runs de GitHub Actions vía gh CLI */
   GITHUB_ACTIONS_LIST: 'githubActions:list',
@@ -81,6 +84,22 @@ export const IPC = {
   FILE_EXPLORER_DELETE: 'fileExplorer:delete',
   /** Renderer → main (invoke): renombrar archivo o carpeta */
   FILE_EXPLORER_RENAME: 'fileExplorer:rename',
+  /** Renderer → main (invoke): cortar rutas al portapapeles */
+  FILE_EXPLORER_CUT: 'fileExplorer:cut',
+  /** Renderer → main (invoke): mover archivo o carpeta */
+  FILE_EXPLORER_MOVE: 'fileExplorer:move',
+  /** Renderer → main (invoke): revelar en Finder */
+  FILE_EXPLORER_REVEAL: 'fileExplorer:reveal',
+  /** Renderer → main (invoke): búsqueda global de archivos (rg --files) */
+  FILE_EXPLORER_SEARCH: 'fileExplorer:search',
+  /** Renderer → main: iniciar watcher del cwd */
+  FILE_EXPLORER_WATCH_START: 'fileExplorer:watchStart',
+  /** Renderer → main: detener watcher */
+  FILE_EXPLORER_WATCH_STOP: 'fileExplorer:watchStop',
+  /** Main → renderer: cambios en el filesystem */
+  FILE_EXPLORER_FS_CHANGED: 'fileExplorer:fsChanged',
+  /** Main → renderer: git status cambió (commit/stage) */
+  GIT_STATUS_CHANGED: 'git:statusChanged',
 
   // ─── Persistencia de sesión ────────────────────────────────────────────────
   /** Renderer → main: guardar layout de pestañas + cwds */

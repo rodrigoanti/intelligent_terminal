@@ -11,6 +11,7 @@ import {
   GIT_MAX_COMMIT_MESSAGE_CHARS,
   GIT_MAX_OUTPUT_BYTES,
 } from '../src/shared/gitSessionTypes'
+import { GIT_ERROR_CODES } from '../src/shared/gitErrorCodes'
 
 const TIMEOUT_LOCAL_MS = 120_000
 const TIMEOUT_NETWORK_MS = 900_000
@@ -68,6 +69,7 @@ function runGit(
           exitCode: null,
           stdout: '',
           stderr: `timeout (${Math.round(timeoutMs / 1000)}s)`,
+          errorCode: GIT_ERROR_CODES.TIMEOUT,
         })
       }
     }, timeoutMs)
@@ -174,6 +176,7 @@ export async function gitGetRepoStatus(sessionCwdRaw: string): Promise<GitRepoSt
       hasStaged: false,
       hasUnstaged: false,
       error: 'cwd inválido',
+      errorCode: GIT_ERROR_CODES.CWD_INVALID,
     }
   }
 
@@ -186,14 +189,17 @@ export async function gitGetRepoStatus(sessionCwdRaw: string): Promise<GitRepoSt
       hasStaged: false,
       hasUnstaged: false,
       error: 'no es un repositorio git',
+      errorCode: GIT_ERROR_CODES.NOT_A_REPO,
     }
   }
 
-  const [sb, por, stat, stagedStat] = await Promise.all([
+  const [sb, por, stat, stagedStat, numStat, stagedNumStat] = await Promise.all([
     runGit(repoRoot, ['status', '-sb'], TIMEOUT_LOCAL_MS),
     runGit(repoRoot, ['status', '--porcelain=v1'], TIMEOUT_LOCAL_MS),
     runGit(repoRoot, ['diff', '--stat'], TIMEOUT_LOCAL_MS),
     runGit(repoRoot, ['diff', '--cached', '--stat'], TIMEOUT_LOCAL_MS),
+    runGit(repoRoot, ['diff', '--numstat'], TIMEOUT_LOCAL_MS),
+    runGit(repoRoot, ['diff', '--cached', '--numstat'], TIMEOUT_LOCAL_MS),
   ])
 
   const sbLines = sb.stdout.split('\n').filter(Boolean)
@@ -210,6 +216,8 @@ export async function gitGetRepoStatus(sessionCwdRaw: string): Promise<GitRepoSt
     files,
     diffStat: capOutput(stat.stdout, 80_000),
     stagedDiffStat: capOutput(stagedStat.stdout, 40_000),
+    diffNumStat: capOutput(numStat.stdout, 80_000),
+    stagedDiffNumStat: capOutput(stagedNumStat.stdout, 40_000),
     hasStaged: porcelainHasStaged(files),
     hasUnstaged: porcelainHasUnstaged(files),
   }
@@ -269,7 +277,15 @@ export async function gitPush(sessionCwdRaw: string): Promise<GitCommandResult> 
 
 export async function gitCommit(sessionCwdRaw: string, message: unknown): Promise<GitCommandResult> {
   const err = validateCommitMessage(message)
-  if (err) return { ok: false, exitCode: null, stdout: '', stderr: err }
+  if (err) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: err,
+      errorCode: GIT_ERROR_CODES.INVALID_COMMIT_MESSAGE,
+    }
+  }
   const sessionCwd = resolveWorkingDir(sessionCwdRaw)
   if (!sessionCwd) return { ok: false, exitCode: null, stdout: '', stderr: 'cwd inválido' }
   const repoRoot = await getRepoRoot(sessionCwd)
@@ -280,8 +296,116 @@ export async function gitCommit(sessionCwdRaw: string, message: unknown): Promis
 
 export async function gitStageAll(sessionCwdRaw: string): Promise<GitCommandResult> {
   const sessionCwd = resolveWorkingDir(sessionCwdRaw)
-  if (!sessionCwd) return { ok: false, exitCode: null, stdout: '', stderr: 'cwd inválido' }
+  if (!sessionCwd) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'cwd inválido',
+      errorCode: GIT_ERROR_CODES.CWD_INVALID,
+    }
+  }
   const repoRoot = await getRepoRoot(sessionCwd)
-  if (!repoRoot) return { ok: false, exitCode: null, stdout: '', stderr: 'no es un repositorio git' }
+  if (!repoRoot) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'no es un repositorio git',
+      errorCode: GIT_ERROR_CODES.NOT_A_REPO,
+    }
+  }
   return runGit(repoRoot, ['add', '-A'], TIMEOUT_LOCAL_MS)
+}
+
+export async function gitStageFile(sessionCwdRaw: string, relPathRaw: unknown): Promise<GitCommandResult> {
+  const relPath = String(relPathRaw ?? '').trim().replace(/\\/g, '/')
+  if (!relPath || relPath.includes('\0') || relPath.startsWith('/')) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'ruta inválida',
+      errorCode: GIT_ERROR_CODES.CWD_INVALID,
+    }
+  }
+  const sessionCwd = resolveWorkingDir(sessionCwdRaw)
+  if (!sessionCwd) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'cwd inválido',
+      errorCode: GIT_ERROR_CODES.CWD_INVALID,
+    }
+  }
+  const repoRoot = await getRepoRoot(sessionCwd)
+  if (!repoRoot) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'no es un repositorio git',
+      errorCode: GIT_ERROR_CODES.NOT_A_REPO,
+    }
+  }
+  return runGit(repoRoot, ['add', '--', relPath], TIMEOUT_LOCAL_MS)
+}
+
+export async function gitUnstageAll(sessionCwdRaw: string): Promise<GitCommandResult> {
+  const sessionCwd = resolveWorkingDir(sessionCwdRaw)
+  if (!sessionCwd) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'cwd inválido',
+      errorCode: GIT_ERROR_CODES.CWD_INVALID,
+    }
+  }
+  const repoRoot = await getRepoRoot(sessionCwd)
+  if (!repoRoot) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'no es un repositorio git',
+      errorCode: GIT_ERROR_CODES.NOT_A_REPO,
+    }
+  }
+  return runGit(repoRoot, ['restore', '--staged', '.'], TIMEOUT_LOCAL_MS)
+}
+
+export async function gitUnstageFile(sessionCwdRaw: string, relPathRaw: unknown): Promise<GitCommandResult> {
+  const relPath = String(relPathRaw ?? '').trim().replace(/\\/g, '/')
+  if (!relPath || relPath.includes('\0') || relPath.startsWith('/')) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'ruta inválida',
+      errorCode: GIT_ERROR_CODES.CWD_INVALID,
+    }
+  }
+  const sessionCwd = resolveWorkingDir(sessionCwdRaw)
+  if (!sessionCwd) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'cwd inválido',
+      errorCode: GIT_ERROR_CODES.CWD_INVALID,
+    }
+  }
+  const repoRoot = await getRepoRoot(sessionCwd)
+  if (!repoRoot) {
+    return {
+      ok: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'no es un repositorio git',
+      errorCode: GIT_ERROR_CODES.NOT_A_REPO,
+    }
+  }
+  return runGit(repoRoot, ['restore', '--staged', '--', relPath], TIMEOUT_LOCAL_MS)
 }

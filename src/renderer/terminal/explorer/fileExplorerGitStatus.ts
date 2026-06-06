@@ -1,6 +1,6 @@
 import type { GitPathEntry, GitRepoStatus } from '@shared/gitSessionTypes'
 
-export type ExplorerGitStatus = 'new' | 'modified'
+export type ExplorerGitStatus = 'new' | 'modified' | 'deleted' | 'staged' | 'conflict'
 
 function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '')
@@ -22,7 +22,10 @@ function porcelainPath(path: string): string {
 }
 
 function porcelainToStatus(status: string): ExplorerGitStatus {
-  if (status === '??' || status[0] === 'A') return 'new'
+  if (status.includes('U') || status === 'AA' || status === 'DD') return 'conflict'
+  if (status === '??') return 'new'
+  if (status[0] === 'A' || status[1] === 'A') return 'staged'
+  if (status[0] === 'D' || status[1] === 'D') return 'deleted'
   return 'modified'
 }
 
@@ -30,8 +33,10 @@ function mergeStatus(
   current: ExplorerGitStatus | undefined,
   next: ExplorerGitStatus,
 ): ExplorerGitStatus {
-  if (current === 'modified' || next === 'modified') return 'modified'
-  return 'new'
+  const priority: ExplorerGitStatus[] = ['conflict', 'deleted', 'staged', 'modified', 'new']
+  const currentIdx = current ? priority.indexOf(current) : priority.length
+  const nextIdx = priority.indexOf(next)
+  return nextIdx < currentIdx ? next : (current ?? next)
 }
 
 function repoPathToExplorerPath(repoPath: string, prefix: string): string | null {

@@ -14,6 +14,7 @@ import {
   type GitBlockRequest,
   type ReadRequest,
 } from '@shared/agentFileProtocol'
+import { requiresShellConfirmation } from '@shared/agentShellGuard'
 import {
   filterPatchesByUserIntent,
   filterWritesByUserIntent,
@@ -103,9 +104,9 @@ async function buildListPayload(sessionId: string, dirs: string[]): Promise<stri
 }
 
 async function runGlobPattern(sessionId: string, pattern: string): Promise<string> {
-  const pat = shellEscapePattern(pattern)
+  const pat = pattern.trim()
   const cmd =
-    `find . \\( -path ./node_modules -o -path ./.git -o -path ./out -o -path ./dist \\) -prune -o -name ${JSON.stringify(pat)} -print 2>/dev/null | head -n 60`
+    `rg --files -g ${JSON.stringify(pat)} --glob '!node_modules/**' --glob '!.git/**' --glob '!out/**' --glob '!dist/**' 2>/dev/null | head -n 60`
   try {
     const r = await window.api.agentRunShell(sessionId, cmd)
     if (r.ok && r.stdout.trim()) return r.stdout.trimEnd()
@@ -202,7 +203,7 @@ async function buildShellFollowUp(
     return lines.join('\n')
   }
   for (const cmd of commands) {
-    if (policy === 'ask') {
+    if (requiresShellConfirmation(cmd, policy)) {
       const ok = (await confirmShell?.(cmd)) === true
       if (!ok) {
         lines.push(`### Not run\n\`${cmd}\`\n_(rejected)_`)
@@ -260,7 +261,7 @@ export async function runChatWithAgentFileLoop(
     cursor = afterList
     const { stripped: afterGlob, patterns: rawGlobPatterns } = extractGlobBlock(cursor)
     cursor = afterGlob
-    const { stripped: visStripped, request: gitRequest } = extractGitBlock(cursor)
+    const { stripped: visStripped, requests: gitRequests } = extractGitBlock(cursor)
     cursor = visStripped
     const { stripped: afterRead, requests: readRequests } = extractReadBlock(cursor)
 
@@ -274,7 +275,7 @@ export async function runChatWithAgentFileLoop(
       grepQueries.length > 0 ||
       listDirs.length > 0 ||
       globPatterns.length > 0 ||
-      gitRequest !== null ||
+      gitRequests.length > 0 ||
       readRequests.length > 0
 
     if (!needsFollowUp) {
@@ -303,7 +304,7 @@ export async function runChatWithAgentFileLoop(
     if (globPatterns.length > 0) {
       additions.push({ role: 'user', content: await buildGlobPayload(sessionId, globPatterns) })
     }
-    if (gitRequest !== null) {
+    for (const gitRequest of gitRequests) {
       additions.push({ role: 'user', content: await buildGitPayload(sessionId, gitRequest) })
     }
     if (readRequests.length > 0) {

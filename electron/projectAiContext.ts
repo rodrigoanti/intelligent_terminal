@@ -2,6 +2,7 @@ import { join, normalize, resolve } from 'path'
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { spawn } from 'child_process'
 import type { ProjectAiContextForAi } from '../src/shared/projectAiContext'
+import { gatherShallowFolderTree } from './agentMd'
 
 const MAX_DIR_ENTRIES = 320
 const MAX_LISTING_CHARS = 12_000
@@ -143,8 +144,8 @@ export async function gatherProjectAiContextForCwd(cwdRaw: string): Promise<Proj
     }
   }
 
-  // Git context es async y no bloquea; folderTree viene de AGENT_MD_TREE (IPC separado)
   const { status: gitStatus, diff: gitDiff } = await gatherGitContextForCwd(dir)
+  const folderTree = gatherShallowFolderTree(dir)
 
-  return { cwd: dir, listing, packageJson, folderTree: null, gitStatus, gitDiff }
+  return { cwd: dir, listing, packageJson, folderTree, gitStatus, gitDiff }
 }

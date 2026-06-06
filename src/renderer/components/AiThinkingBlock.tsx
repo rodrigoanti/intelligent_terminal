@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { scrollAiMessagesToBottom } from './ai/aiMessagesScroll'
 
 interface AiThinkingBlockProps {
   content: string
@@ -9,7 +10,7 @@ function scrollNearestScrollable(el: HTMLElement): void {
   let node: HTMLElement | null = el.parentElement
   while (node) {
     if (node.scrollHeight > node.clientHeight && getComputedStyle(node).overflowY !== 'visible') {
-      requestAnimationFrame(() => { node!.scrollTo({ top: node!.scrollHeight, behavior: 'smooth' }) })
+      scrollAiMessagesToBottom(node, true)
       return
     }
     node = node.parentElement
@@ -21,7 +22,13 @@ export const AiThinkingBlock: React.FC<AiThinkingBlockProps> = ({ content, isStr
   const detailsRef = useRef<HTMLDetailsElement>(null)
 
   useEffect(() => {
-    if (!isStreaming) setOpen(false)
+    if (isStreaming) return
+    // Colapsar tras el layout del mensaje final; si va en el mismo frame que el scroll
+    // del chat, el scrollHeight baja y el viewport puede saltar arriba.
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setOpen(false))
+    })
+    return () => cancelAnimationFrame(id)
   }, [isStreaming])
 
   function handleToggle(e: React.SyntheticEvent<HTMLDetailsElement>): void {

@@ -8,11 +8,31 @@ export interface TerminalFollowState {
   userDetached: boolean
 }
 
+/** Evita marcar `userDetached` durante scroll programático (follow/reconcile). */
+let programmaticScrollDepth = 0
+
+export function isProgrammaticScroll(): boolean {
+  return programmaticScrollDepth > 0
+}
+
+export function runWithProgrammaticScroll(fn: () => void): void {
+  programmaticScrollDepth++
+  try {
+    fn()
+  } finally {
+    programmaticScrollDepth--
+  }
+}
+
 type BufferServiceCore = { isUserScrolling: boolean }
 type TerminalWithCore = Terminal & { _core?: { _bufferService?: BufferServiceCore } }
 
 function getBufferService(term: Terminal): BufferServiceCore | undefined {
   return (term as TerminalWithCore)._core?._bufferService
+}
+
+export function isUserScrolling(term: Terminal): boolean {
+  return getBufferService(term)?.isUserScrolling ?? false
 }
 
 export function clearUserScrolling(term: Terminal): void {
@@ -24,16 +44,28 @@ export function clearFollowDetached(state: TerminalFollowState): void {
   state.userDetached = false
 }
 
-/** Actualiza `userDetached` según la distancia al fondo del buffer. */
+function isViewportDetachedFromBottom(
+  term: Terminal,
+  slackLines = FOLLOW_SLACK_LINES,
+): boolean {
+  const buf = term.buffer.active
+  if (buf.type !== 'normal') return false
+  return buf.viewportY < buf.baseY - slackLines
+}
+
+/**
+ * Actualiza `userDetached` solo tras scroll iniciado por el usuario.
+ * Ignora el desfase transitorio buffer/DOM durante follow o reconcile programático.
+ */
 export function updateFollowDetachedState(
   term: Terminal,
   state: TerminalFollowState,
   slackLines = FOLLOW_SLACK_LINES,
 ): void {
+  if (isProgrammaticScroll()) return
+  if (!isUserScrolling(term)) return
   try {
-    const buf = term.buffer.active
-    if (buf.type !== 'normal') return
-    state.userDetached = buf.viewportY < buf.baseY - slackLines
+    state.userDetached = isViewportDetachedFromBottom(term, slackLines)
   } catch {
     /* dispose */
   }
@@ -66,11 +98,24 @@ function isAtBufferBottom(term: Terminal): boolean {
   }
 }
 
+/** Desplaza solo las líneas necesarias para alcanzar el fondo del buffer. */
+function scrollGapToBottom(term: Terminal): void {
+  const buf = term.buffer.active
+  if (buf.type !== 'normal') {
+    term.scrollToBottom()
+    return
+  }
+  const gap = buf.baseY - buf.viewportY
+  if (gap > 0) term.scrollLines(gap)
+}
+
 /** Fuerza el viewport al fondo; xterm sincroniza el DOM vía `onScroll`. */
 export function followTerminalOutput(term: Terminal): void {
   const run = (): void => {
-    clearUserScrolling(term)
-    term.scrollToBottom()
+    runWithProgrammaticScroll(() => {
+      clearUserScrolling(term)
+      term.scrollToBottom()
+    })
   }
   try {
     run()
@@ -92,11 +137,13 @@ export function followTerminalOutput(term: Terminal): void {
  */
 export function followTerminalOutputSoft(term: Terminal, state?: TerminalFollowState): void {
   const run = (): void => {
-    clearUserScrolling(term)
-    if (!isAtBufferBottom(term)) {
-      term.scrollToBottom()
-    }
-    if (state) clearFollowDetached(state)
+    runWithProgrammaticScroll(() => {
+      clearUserScrolling(term)
+      if (!isAtBufferBottom(term)) {
+        scrollGapToBottom(term)
+      }
+      if (state) clearFollowDetached(state)
+    })
   }
   try {
     run()
@@ -121,6 +168,11 @@ export function writePtyDataWithFollowScroll(
   followState: TerminalFollowState,
   afterParsed?: () => void,
 ): void {
+  if (!data) {
+    try { afterParsed?.() } catch { /* ignore */ }
+    return
+  }
+
   let followAtStart = false
   try {
     followAtStart = shouldFollowTerminalOutput(term, followState)
@@ -147,5 +199,64 @@ export function writePtyDataWithFollowScroll(
     })
   } catch {
     /* write inválido (dispose en curso) */
+  }
+}
+
+export interface PtyWriteBatcher {
+  write: (data: string, afterParsed?: () => void) => void
+  dispose: () => void
+}
+
+/**
+ * Agrupa chunks IPC del PTY en un solo `term.write` por frame para reducir
+ * carreras de scroll y repintados durante streaming.
+ */
+export function createPtyWriteBatcher(
+  getTerm: () => Terminal | null,
+  followState: TerminalFollowState,
+): PtyWriteBatcher {
+  let pending = ''
+  const afterParsedCbs: Array<() => void> = []
+  let raf = 0
+
+  const flush = (): void => {
+    raf = 0
+    const term = getTerm()
+    const chunk = pending
+    pending = ''
+    const cbs = afterParsedCbs.splice(0)
+    if (!term || !chunk) {
+      for (const cb of cbs) {
+        try { cb() } catch { /* ignore */ }
+      }
+      return
+    }
+    writePtyDataWithFollowScroll(term, chunk, followState, () => {
+      for (const cb of cbs) {
+        try { cb() } catch { /* ignore */ }
+      }
+    })
+  }
+
+  const schedule = (): void => {
+    if (raf !== 0) return
+    raf = requestAnimationFrame(flush)
+  }
+
+  return {
+    write(data, afterParsed) {
+      if (!data) return
+      pending += data
+      if (afterParsed) afterParsedCbs.push(afterParsed)
+      schedule()
+    },
+    dispose() {
+      if (raf !== 0) {
+        cancelAnimationFrame(raf)
+        raf = 0
+      }
+      pending = ''
+      afterParsedCbs.length = 0
+    },
   }
 }

@@ -6,7 +6,9 @@ import {
   type TerminalFollowState,
   updateFollowDetachedState,
   FOLLOW_SLACK_LINES,
+  shouldFollowTerminalOutput,
 } from './terminalFollowScroll'
+import { repaintTerminalCanvas } from './terminalCanvasRepaint'
 
 /**
  * Ajusta columnas/filas al contenedor sin “saltar” el scroll: si el usuario estaba
@@ -28,22 +30,26 @@ export function fitTerminalPreserveScroll(
     const rowsBefore = term.rows
     const savedTop = buf.viewportY
     const maxScrollBefore = Math.max(0, buf.baseY)
-    const wasAtBottom = savedTop >= maxScrollBefore - FOLLOW_SLACK_LINES
+    const stickToBottom = followState != null
+      ? shouldFollowTerminalOutput(term, followState)
+      : savedTop >= maxScrollBefore - FOLLOW_SLACK_LINES
     fit.fit()
     if (term.cols === colsBefore && term.rows === rowsBefore) {
       return
     }
     const b = term.buffer.active
     if (b.type !== 'normal') return
-    if (wasAtBottom) {
+    if (stickToBottom) {
       // Tras fit() el viewport puede quedar en Y=0; no usar isNearBottom aquí.
       followTerminalOutput(term)
       if (followState) clearFollowDetached(followState)
+      repaintTerminalCanvas(term)
       return
     }
     const target = Math.min(Math.max(0, savedTop), Math.max(0, b.baseY))
     term.scrollToLine(target)
     if (followState) updateFollowDetachedState(term, followState)
+    repaintTerminalCanvas(term)
   } catch {
     /* syncScrollArea / dimensions */
   }

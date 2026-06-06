@@ -120,7 +120,7 @@ async function macSpotifyDesktopInstalled(): Promise<boolean> {
   }
 }
 
-async function winSendMediaPlayPause(): Promise<void> {
+async function winSendMediaKey(vk: string): Promise<void> {
   await execFileAsync('powershell', [
     '-NoProfile',
     '-Command',
@@ -131,9 +131,21 @@ public class K {
   [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 }
 "@
-[K]::keybd_event(0xB3,0,0,[UIntPtr]::Zero)
-[K]::keybd_event(0xB3,0,2,[UIntPtr]::Zero)`,
+[K]::keybd_event(${vk},0,0,[UIntPtr]::Zero)
+[K]::keybd_event(${vk},0,2,[UIntPtr]::Zero)`,
   ])
+}
+
+async function winSendMediaPlayPause(): Promise<void> {
+  await winSendMediaKey('0xB3')
+}
+
+async function winSendMediaPlay(): Promise<void> {
+  await winSendMediaKey('0xB0')
+}
+
+async function winSendMediaPause(): Promise<void> {
+  await winSendMediaKey('0xB2')
 }
 
 async function winPlayPlaylist(playlistId: string): Promise<void> {
@@ -251,7 +263,7 @@ export async function pausePlayback(): Promise<void> {
     case 'darwin':
       return macSpotifyPause()
     case 'win32':
-      return winSendMediaPlayPause()
+      return winSendMediaPause()
     default:
       return linuxPlayerctl('pause')
   }
@@ -262,7 +274,7 @@ export async function resumePlayback(): Promise<void> {
     case 'darwin':
       return macSpotifyPlay()
     case 'win32':
-      return winSendMediaPlayPause()
+      return winSendMediaPlay()
     default:
       return linuxPlayerctl('play')
   }
@@ -279,7 +291,7 @@ export async function getPlaybackState(): Promise<SpotifyPlaybackState> {
   }
   if (process.platform === 'win32') {
     const appRunning = await winSpotifyProcessRunning()
-    return { installed: true, appRunning, playerState: appRunning ? 'unknown' : 'stopped' }
+    return { installed: true, appRunning, playerState: appRunning ? 'paused' : 'stopped' }
   }
   const inner = await linuxGetState()
   return { installed: true, ...inner }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import type { GitHubActionsSnapshot } from '@shared/githubActionsTypes'
 import type { GitRepoStatus } from '@shared/gitSessionTypes'
+import { useT } from '@i18n/useT'
 import { Button } from '../ui/Button'
 import { Spinner } from '../ui/Spinner'
 import { GitHubActionsRunRow } from './GitHubActionsRunRow'
@@ -17,6 +18,7 @@ export const GitHubActionsPanel: React.FC<GitHubActionsPanelProps> = ({
   repoStatus,
   refreshToken,
 }) => {
+  const { t } = useT()
   const [snapshot, setSnapshot] = useState<GitHubActionsSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -56,57 +58,57 @@ export const GitHubActionsPanel: React.FC<GitHubActionsPanelProps> = ({
       : null
 
   return (
-    <aside className="gh-actions-panel" aria-label="GitHub Actions">
+    <aside className="gh-actions-panel" aria-label={t('githubActions.title')}>
       <header className="gh-actions-panel__header">
-        <h3 className="gh-actions-panel__title">GitHub Actions</h3>
+        <h3 className="gh-actions-panel__title">{t('githubActions.title')}</h3>
         <Button
           variant="secondary"
           size="sm"
           disabled={!repoStatus?.isRepo || loading}
           onClick={() => void refresh()}
         >
-          actualizar
+          {t('githubActions.refresh')}
         </Button>
       </header>
 
       <div className="gh-actions-panel__body">
         {!repoStatus?.isRepo && (
-          <p className="gh-actions-panel__hint">Abre el panel en un repositorio git.</p>
+          <p className="gh-actions-panel__hint">{t('githubActions.notInRepo')}</p>
         )}
 
         {repoStatus?.isRepo && loading && !snapshot && (
           <div className="gh-actions-panel__loading">
-            <Spinner aria-label="Cargando workflow runs" />
+            <Spinner aria-label={t('githubActions.loadingAriaLabel')} />
           </div>
         )}
 
         {repoStatus?.isRepo && snapshot && !snapshot.ok && (
           <div className="gh-actions-panel__error" role="alert">
-            <p>{snapshot.error ?? 'No se pudieron cargar los runs.'}</p>
+            <p>{snapshot.error ?? t('githubActions.loadFailed')}</p>
             {snapshot.errorCode === 'gh_missing' && (
               <p className="gh-actions-panel__error-hint">
-                Instala{' '}
+                {t('githubActions.ghMissingHint')}{' '}
                 <button
                   type="button"
                   className="gh-actions-panel__link"
                   onClick={() => void openUrl('https://cli.github.com/')}
                 >
-                  GitHub CLI
+                  {t('githubActions.ghMissingLink')}
                 </button>
                 .
               </p>
             )}
             {snapshot.errorCode === 'gh_not_authed' && (
-              <p className="gh-actions-panel__error-hint">Ejecuta <code>gh auth login</code> en una terminal.</p>
+              <p className="gh-actions-panel__error-hint">{t('githubActions.ghNotAuthedHint')}</p>
             )}
             {snapshot.errorCode === 'not_github' && (
-              <p className="gh-actions-panel__error-hint">El remote <code>origin</code> debe ser de GitHub.</p>
+              <p className="gh-actions-panel__error-hint">{t('githubActions.notGithubHint')}</p>
             )}
           </div>
         )}
 
         {repoStatus?.isRepo && snapshot?.ok && snapshot.runs.length === 0 && (
-          <p className="gh-actions-panel__hint">No hay workflow runs recientes.</p>
+          <p className="gh-actions-panel__hint">{t('githubActions.noRuns')}</p>
         )}
 
         {snapshot?.ok && snapshot.runs.length > 0 && (
@@ -127,7 +129,7 @@ export const GitHubActionsPanel: React.FC<GitHubActionsPanelProps> = ({
             className="gh-actions-panel__link"
             onClick={() => void openUrl(actionsUrl)}
           >
-            Ver todas en GitHub
+            {t('githubActions.viewAll')}
           </button>
         </footer>
       )}
