@@ -1,4 +1,5 @@
 import type { Terminal } from '@xterm/xterm'
+import { getTerminalViewportElement, isDomViewportAtBottom } from './terminalWheelScroll'
 
 /** Líneas por encima del fondo que aún cuentan como «siguiendo» (scroll accidental). */
 export const FOLLOW_SLACK_LINES = 3
@@ -65,6 +66,9 @@ export function updateFollowDetachedState(
   if (isProgrammaticScroll()) return
   if (!isUserScrolling(term)) return
   try {
+    // Durante streaming el buffer puede ir retrasado mientras el DOM sigue abajo.
+    const viewportEl = getTerminalViewportElement(term)
+    if (viewportEl != null && isDomViewportAtBottom(viewportEl)) return
     state.userDetached = isViewportDetachedFromBottom(term, slackLines)
   } catch {
     /* dispose */
@@ -82,6 +86,28 @@ export function shouldFollowTerminalOutput(
     const buf = term.buffer.active
     if (buf.type !== 'normal') return false
     return buf.viewportY >= buf.baseY - slackLines
+  } catch {
+    return false
+  }
+}
+
+/**
+ * ¿Mantener el prompt visible tras un `fit()`?
+ * Durante streaming del PTY el buffer puede ir por detrás del scrollbar DOM;
+ * si el usuario no se desenganchó y el DOM sigue abajo, forzar fondo evita
+ * `scrollToLine(0)` y saltos al inicio del scrollback.
+ */
+export function shouldStickTerminalToBottom(
+  term: Terminal,
+  state: TerminalFollowState,
+  slackLines = FOLLOW_SLACK_LINES,
+): boolean {
+  if (state.userDetached) return false
+  if (term.getSelection().length > 0) return false
+  if (shouldFollowTerminalOutput(term, state, slackLines)) return true
+  try {
+    const viewportEl = getTerminalViewportElement(term)
+    return viewportEl != null && isDomViewportAtBottom(viewportEl)
   } catch {
     return false
   }
@@ -173,9 +199,9 @@ export function writePtyDataWithFollowScroll(
     return
   }
 
-  let followAtStart = false
+  let stickAtStart = false
   try {
-    followAtStart = shouldFollowTerminalOutput(term, followState)
+    stickAtStart = shouldStickTerminalToBottom(term, followState)
   } catch {
     /* buffer inválido */
   }
@@ -183,7 +209,7 @@ export function writePtyDataWithFollowScroll(
   try {
     term.write(data, () => {
       try {
-        if (followAtStart || shouldFollowTerminalOutput(term, followState)) {
+        if (stickAtStart || shouldStickTerminalToBottom(term, followState)) {
           followTerminalOutputSoft(term, followState)
         } else {
           updateFollowDetachedState(term, followState)

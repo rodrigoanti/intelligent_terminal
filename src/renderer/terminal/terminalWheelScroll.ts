@@ -4,7 +4,7 @@ import {
   FOLLOW_SLACK_LINES,
   isProgrammaticScroll,
   runWithProgrammaticScroll,
-  shouldFollowTerminalOutput,
+  shouldStickTerminalToBottom,
   type TerminalFollowState,
 } from './terminalFollowScroll'
 
@@ -79,6 +79,8 @@ export function shouldForwardWheelToTerminal(target: HTMLElement | null, deltaY:
   if (target.closest('.xterm')) return false
   // Modales dentro del pane (p. ej. Git): el scroll nativo no debe ir al buffer PTY.
   if (target.closest('.terminal-modal-backdrop')) return false
+  // Explorador overlay: la rueda no debe desplazar el buffer xterm debajo.
+  if (target.closest('.terminal-file-explorer')) return false
 
   const scrollable = target.closest(SCROLLABLE_ANCESTOR_SELECTOR) as HTMLElement | null
   if (scrollable && elementCanConsumeWheelScroll(scrollable, deltaY)) return false
@@ -132,9 +134,9 @@ export function reconcileTerminalScrollIfDomAtBottom(
 ): void {
   if (isProgrammaticScroll()) return
   if (followState?.userDetached) return
-  // Durante auto-follow el callback de term.write ya ajusta el viewport;
-  // reconcile aquí compite y produce saltos al streamear salida del PTY.
-  if (followState && shouldFollowTerminalOutput(term, followState)) return
+  // Durante auto-follow (o DOM abajo con buffer retrasado) el callback de term.write
+  // ya ajusta el viewport; reconcile aquí compite y produce saltos al streamear PTY.
+  if (followState && shouldStickTerminalToBottom(term, followState)) return
   const viewportEl = getTerminalViewportElement(term)
   if (!viewportEl || !isDomViewportAtBottom(viewportEl) || isBufferAtBottom(term)) return
   try {

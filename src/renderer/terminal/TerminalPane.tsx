@@ -23,7 +23,7 @@ import {
   clearFollowDetached,
   createPtyWriteBatcher,
   followTerminalOutput,
-  shouldFollowTerminalOutput,
+  shouldStickTerminalToBottom,
   type TerminalFollowState,
   updateFollowDetachedState,
   writePtyDataWithFollowScroll,
@@ -32,7 +32,11 @@ import {
   createTerminalFitScheduler,
   fitTerminalPreserveScroll,
 } from './terminalFitScheduler'
-import { createTerminalRepaintScheduler, repaintTerminalCanvas } from './terminalCanvasRepaint'
+import {
+  createTerminalRepaintScheduler,
+  repaintTerminalCanvas,
+  repaintTerminalCanvasForFollowState,
+} from './terminalCanvasRepaint'
 import {
   handleForwardedTerminalWheel,
   isTerminalScrolledUp,
@@ -778,7 +782,7 @@ export const TerminalPane: React.FC<Props> = ({
     const runScrollSync = (): void => {
       scrollSyncRaf = 0
       if (!termAlive || termRef.current !== term) return
-      const autoFollowing = shouldFollowTerminalOutput(term, followStateRef.current)
+      const autoFollowing = shouldStickTerminalToBottom(term, followStateRef.current)
       if (!autoFollowing) {
         updateFollowDetachedState(term, followStateRef.current)
       }
@@ -815,8 +819,9 @@ export const TerminalPane: React.FC<Props> = ({
     const paneRoot = paneRootRef.current
     paneRoot?.addEventListener('wheel', onPaneWheelCapture, { passive: false, capture: true })
 
-    const terminalRepaint = createTerminalRepaintScheduler(() =>
-      (termAlive && termRef.current === term ? term : null),
+    const terminalRepaint = createTerminalRepaintScheduler(
+      () => (termAlive && termRef.current === term ? term : null),
+      () => followStateRef.current,
     )
     const scheduleTerminalCanvasRepaint = (): void => {
       if (!termAlive || termRef.current !== term) return
@@ -828,7 +833,12 @@ export const TerminalPane: React.FC<Props> = ({
     const flushPtyDataBuffer = (): void => {
       if (!termAlive || termRef.current !== term || ptyDataBuffer.length === 0) return
       const pending = ptyDataBuffer.splice(0, ptyDataBuffer.length).join('')
-      term.write(pending, scheduleTerminalCanvasRepaint)
+      writePtyDataWithFollowScroll(
+        term,
+        pending,
+        followStateRef.current,
+        scheduleTerminalCanvasRepaint,
+      )
     }
 
     const markScrollbackHydrated = (): void => {
@@ -1124,7 +1134,6 @@ export const TerminalPane: React.FC<Props> = ({
     if (term && fit) {
       term.options.fontSize = config.fontSize
       fitTerminalPreserveScroll(term, fit, followStateRef.current)
-      repaintTerminalCanvas(term)
       window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
     }
   }, [config.fontSize, sessionId])
@@ -1135,8 +1144,13 @@ export const TerminalPane: React.FC<Props> = ({
         const term = termRef.current!
         const fit = fitRef.current!
         fitTerminalPreserveScroll(term, fit, followStateRef.current)
-        repaintTerminalCanvas(term)
         window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
+        // Tab con display:none no compone el canvas; segundo frame tras volver visible (Electron).
+        requestAnimationFrame(() => {
+          const t = termRef.current
+          if (!t || t !== term || t.rows < 1) return
+          repaintTerminalCanvasForFollowState(t, followStateRef.current)
+        })
         term.focus()
       }, 10)
     }
@@ -1148,7 +1162,6 @@ export const TerminalPane: React.FC<Props> = ({
       const term = termRef.current!
       const fit = fitRef.current!
       fitTerminalPreserveScroll(term, fit, followStateRef.current)
-      repaintTerminalCanvas(term)
       window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
     }, 60)
     return () => clearTimeout(t)

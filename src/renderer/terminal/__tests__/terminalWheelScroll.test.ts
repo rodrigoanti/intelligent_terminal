@@ -53,6 +53,24 @@ describe('terminalWheelScroll', () => {
     backdrop.remove()
   })
 
+  it('shouldForwardWheelToTerminal ignores wheel inside file explorer overlay', () => {
+    const explorer = document.createElement('aside')
+    explorer.className = 'terminal-file-explorer'
+    const tree = document.createElement('div')
+    tree.className = 'file-explorer-tree'
+    Object.defineProperty(tree, 'scrollTop', { value: 0, writable: true })
+    Object.defineProperty(tree, 'scrollHeight', { value: 400, writable: true })
+    Object.defineProperty(tree, 'clientHeight', { value: 120, writable: true })
+    explorer.appendChild(tree)
+    document.body.appendChild(explorer)
+    // En el tope: elementCanConsumeWheelScroll sería false, pero el overlay bloquea igual.
+    expect(shouldForwardWheelToTerminal(tree, -10)).toBe(false)
+    // En el fondo: antes se reenviaba a xterm.
+    Object.defineProperty(tree, 'scrollTop', { value: 280, writable: true })
+    expect(shouldForwardWheelToTerminal(tree, 10)).toBe(false)
+    explorer.remove()
+  })
+
   it('findWheelConsumingScrollableAncestor prefers nested overflow containers', () => {
     const outer = document.createElement('div')
     const inner = document.createElement('ul')

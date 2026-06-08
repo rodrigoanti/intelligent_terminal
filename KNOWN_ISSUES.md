@@ -146,9 +146,37 @@ El usuario puede elegir otro tema en el modal de temas.
 |---------|----------|
 | `src/renderer/components/ai/aiMessagesScroll.ts` | Scroll instantáneo al fondo, clamp de `scrollTop`, doble `rAF`; `wasStreamingRef` fuerza un último scroll al terminar. |
 | `src/renderer/components/AiThinkingBlock.tsx` | Colapsa el bloque thinking **dos frames** después de fin de streaming. |
-| `src/renderer/terminal/terminalFitScheduler.ts` | Tras `fit()`, si `shouldFollowTerminalOutput` es true, usa `followTerminalOutput` en lugar de `scrollToLine(savedTop)`. |
+| `src/renderer/terminal/terminalFitScheduler.ts` | Tras `fit()`, si `shouldStickTerminalToBottom` es true, usa `followTerminalOutput` en lugar de `scrollToLine(savedTop)`. |
 | `src/renderer/terminal/TerminalPane.tsx` | Al cambiar `--terminal-ai-dock-reserve` (dock colapsado), programa un `refit` del xterm en el frame siguiente para realinear scroll tras el cambio de padding. |
 | `src/renderer/components/ai/useAiMessagesFollowScroll.ts` | Hook del auto-scroll del chat (streaming + último frame al terminar). |
+
+---
+
+## 7. Terminal xterm: salto al inicio del scrollback con agente / salida PTY
+
+### Síntomas
+
+- Mientras un **agente** (o cualquier proceso) escribe salida en la terminal, el viewport **salta al principio** del scrollback (línea más antigua visible).
+- Suele coincidir con el **dock IA colapsado** creciendo al streamear la respuesta del chat (cada mensaje nuevo cambia `--terminal-ai-dock-reserve` → `fit()` del xterm).
+
+### Causa
+
+| Área | Descripción |
+|------|-------------|
+| **Desfase buffer / DOM** | Durante streaming, xterm puede dejar el scrollbar DOM abajo mientras `viewportY` en el buffer va retrasado respecto a `baseY`. |
+| **`fit()` tras resize del dock** | `fitTerminalPreserveScroll` solo miraba `shouldFollowTerminalOutput` (buffer). Si el buffer iba retrasado, restauraba `scrollToLine(savedTop)` con `savedTop === 0` → salto al inicio. |
+| **`syncScrollArea` en repintado** | Cada chunk PTY programaba `repaintTerminalCanvas` → `syncScrollArea`, compitiendo con el auto-follow del callback de `term.write`. |
+| **`writePtyDataWithFollowScroll` solo miraba buffer** | Con lag buffer/DOM no seguía la salida y podía marcar `userDetached` vía `updateFollowDetachedState`. |
+
+### Mitigaciones
+
+| Archivo | Qué hace |
+|---------|----------|
+| `src/renderer/terminal/terminalFollowScroll.ts` | **`shouldStickTerminalToBottom`**: además del buffer, si el DOM está abajo y el usuario no se desenganchó, mantener el prompt tras `fit()`. **`writePtyDataWithFollowScroll`** y **`updateFollowDetachedState`** usan el mismo criterio para no marcar `userDetached` ni dejar de seguir durante lag buffer/DOM. |
+| `src/renderer/terminal/terminalFitScheduler.ts` | Usa `shouldStickTerminalToBottom` antes de decidir `followTerminalOutput` vs `scrollToLine`. Repintado tras stick omite `syncScrollArea`. |
+| `src/renderer/terminal/terminalCanvasRepaint.ts` | Omite `syncScrollArea` mientras hay auto-follow activo, scroll programático o **`shouldStickTerminalToBottom`**. |
+| `src/renderer/terminal/terminalWheelScroll.ts` | `reconcileTerminalScrollIfDomAtBottom` también respeta `shouldStickTerminalToBottom` para no competir con el follow. |
+| `src/renderer/terminal/TerminalPane.tsx` | El scheduler de repintado recibe `followState`; `runScrollSync` usa `shouldStickTerminalToBottom`. |
 
 ---
 

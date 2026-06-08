@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, expect, it, vi } from 'vitest'
 import {
   clearFollowDetached,
@@ -7,6 +10,7 @@ import {
   shouldFollowTerminalOutput,
   type TerminalFollowState,
   followTerminalOutput,
+  shouldStickTerminalToBottom,
   updateFollowDetachedState,
   writePtyDataWithFollowScroll,
 } from '../terminalFollowScroll'
@@ -84,5 +88,72 @@ describe('terminalFollowScroll', () => {
     })
     expect(state.userDetached).toBe(false)
     expect(isProgrammaticScroll()).toBe(false)
+  })
+
+  it('updateFollowDetachedState ignores buffer lag when DOM is at bottom', () => {
+    const viewport = document.createElement('div')
+    viewport.className = 'xterm-viewport'
+    Object.defineProperty(viewport, 'scrollTop', { value: 900, writable: true })
+    Object.defineProperty(viewport, 'scrollHeight', { value: 1000, writable: true })
+    Object.defineProperty(viewport, 'clientHeight', { value: 100, writable: true })
+    const root = document.createElement('div')
+    root.appendChild(viewport)
+
+    const state: TerminalFollowState = { userDetached: false }
+    const term = {
+      buffer: { active: { type: 'normal' as const, viewportY: 0, baseY: 120 } },
+      getSelection: () => '',
+      element: root,
+      _core: { _bufferService: { isUserScrolling: true } },
+    } as never
+
+    updateFollowDetachedState(term, state)
+    expect(state.userDetached).toBe(false)
+  })
+
+  it('writePtyDataWithFollowScroll follows when DOM is at bottom but buffer lagged', () => {
+    const viewport = document.createElement('div')
+    viewport.className = 'xterm-viewport'
+    Object.defineProperty(viewport, 'scrollTop', { value: 900, writable: true })
+    Object.defineProperty(viewport, 'scrollHeight', { value: 1000, writable: true })
+    Object.defineProperty(viewport, 'clientHeight', { value: 100, writable: true })
+    const root = document.createElement('div')
+    root.appendChild(viewport)
+
+    const scrollLines = vi.fn()
+    const state: TerminalFollowState = { userDetached: false }
+    const term = {
+      buffer: { active: { type: 'normal' as const, viewportY: 0, baseY: 120 } },
+      getSelection: () => '',
+      scrollToBottom: vi.fn(),
+      scrollLines,
+      element: root,
+      write: (data: string, cb?: () => void) => { cb?.() },
+      _core: { _bufferService: { isUserScrolling: false } },
+    } as never
+
+    writePtyDataWithFollowScroll(term, 'chunk', state)
+    expect(scrollLines).toHaveBeenCalledWith(120)
+    expect(state.userDetached).toBe(false)
+  })
+
+  it('shouldStickTerminalToBottom follows DOM bottom when buffer lags during stream', () => {
+    const viewport = document.createElement('div')
+    viewport.className = 'xterm-viewport'
+    Object.defineProperty(viewport, 'scrollTop', { value: 900, writable: true })
+    Object.defineProperty(viewport, 'scrollHeight', { value: 1000, writable: true })
+    Object.defineProperty(viewport, 'clientHeight', { value: 100, writable: true })
+    const root = document.createElement('div')
+    root.appendChild(viewport)
+
+    const state: TerminalFollowState = { userDetached: false }
+    const term = {
+      buffer: { active: { type: 'normal' as const, viewportY: 0, baseY: 120 } },
+      getSelection: () => '',
+      element: root,
+    } as never
+
+    expect(shouldFollowTerminalOutput(term, state)).toBe(false)
+    expect(shouldStickTerminalToBottom(term, state)).toBe(true)
   })
 })

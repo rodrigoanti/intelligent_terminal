@@ -38,4 +38,11 @@ describe('reconcileTerminalScrollIfDomAtBottom', () => {
     reconcileTerminalScrollIfDomAtBottom(term, state)
     expect(term.scrollToBottom).not.toHaveBeenCalled()
   })
+
+  it('skips reconcile when DOM is at bottom but buffer lagged during stream', () => {
+    const term = makeTerm(0, 120)
+    const state: TerminalFollowState = { userDetached: false }
+    reconcileTerminalScrollIfDomAtBottom(term, state)
+    expect(term.scrollToBottom).not.toHaveBeenCalled()
+  })
 })

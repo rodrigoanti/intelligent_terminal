@@ -808,21 +808,26 @@ export const FileExplorerTree = forwardRef<FileExplorerTreeHandle, FileExplorerT
       overscan: 12,
       enabled: useVirtual,
     })
+    const virtualizerRef = useRef(virtualizer)
+    virtualizerRef.current = virtualizer
 
+    // Solo al mover el foco con teclado/clic en fila — no cuando `visibleRows` cambia
+    // (p. ej. loadDir async), para no saltar al inicio mientras el usuario scrollea.
     useEffect(() => {
-      if (visibleRows.length === 0) return
-      const idx = Math.min(focusedRowIndex, visibleRows.length - 1)
-      if (useVirtual) {
-        virtualizer.scrollToIndex(idx, { align: 'auto' })
+      const rows = visibleRowsRef.current
+      if (rows.length === 0) return
+      const idx = Math.min(focusedRowIndex, rows.length - 1)
+      if (rows.length > VIRTUAL_THRESHOLD) {
+        virtualizerRef.current.scrollToIndex(idx, { align: 'auto' })
       } else {
-        const row = visibleRows[idx]
+        const row = rows[idx]
         if (!row || !treeScrollRef.current) return
         const el = treeScrollRef.current.querySelector(
           `.file-explorer-tree-node[data-rel-path="${row.entry.relPath.replace(/"/g, '\\"')}"]`,
         )
         el?.scrollIntoView({ block: 'nearest' })
       }
-    }, [focusedRowIndex, visibleRows, useVirtual, virtualizer])
+    }, [focusedRowIndex])
 
     const handleTreeKeyDown = useCallback(
       (e: React.KeyboardEvent): void => {
