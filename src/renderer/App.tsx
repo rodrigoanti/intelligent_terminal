@@ -107,8 +107,6 @@ export const App: React.FC = () => {
   const [busyPanes, setBusyPanes] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [themePickerOpen, setThemePickerOpen] = useState(false)
-  const [mountedTabIds, setMountedTabIds] = useState<Set<string>>(new Set())
-  const prevActiveTabRef = useRef('')
   /** Reordenar paneles: contexto durante HTML5 DnD (evita cierres obsoletos en dragOver). */
   const paneReorderDragRef = useRef<{ tabId: string; dragPaneId: string } | null>(null)
   const [paneDragOverPaneId, setPaneDragOverPaneId] = useState<string | null>(null)
@@ -293,19 +291,6 @@ export const App: React.FC = () => {
     if (!sessionReady.loaded || !tabs.length) return
     scheduleSaveSession()
   }, [tabs, activeTabId, sessionReady.loaded, scheduleSaveSession])
-
-  useEffect(() => {
-    if (!activeTabId) return
-    setMountedTabIds(prev => {
-      const next = new Set(prev)
-      next.add(activeTabId)
-      if (prevActiveTabRef.current && prevActiveTabRef.current !== activeTabId && next.size > 2) {
-        next.delete(prevActiveTabRef.current)
-      }
-      prevActiveTabRef.current = activeTabId
-      return next
-    })
-  }, [activeTabId])
 
   useEffect(() => {
     const tab = tabs.find(t => t.id === activeTabId)
@@ -948,7 +933,6 @@ export const App: React.FC = () => {
       <div className="main-area">
         <div className="terminals-container">
           {configReady && sessionReady.loaded && tabs.map(tab => {
-            const tabMounted = mountedTabIds.has(tab.id)
             const p = tab.paneIds
             const n = p.length
             const layoutClass =
@@ -961,9 +945,7 @@ export const App: React.FC = () => {
             const resizeEnabled = tab.id === activeTabId
 
             let inner: React.ReactNode
-            if (!tabMounted) {
-              inner = <div className="tab-terminal-group-placeholder" aria-hidden />
-            } else if (n === 0) {
+            if (n === 0) {
               inner = null
             } else if (n === 1) {
               inner = renderPaneCell(tab, p[0]!)

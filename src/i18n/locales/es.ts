@@ -141,7 +141,7 @@ const es = {
 
   git: {
     title: 'git',
-    footerHint: 'cwd de la sesión · pull con --ff-only · commit solo con staging · Actions vía gh · esc cerrar',
+    footerHint: 'cwd de la sesión · pull con --ff-only · commit solo con staging · Actions vía gh · ⌘G o esc cerrar',
     loadingAriaLabel: 'Cargando estado git',
     cwdTooltip: 'Carpeta de la sesión (cwd): {{cwd}}',
     refreshButton: 'actualizar',

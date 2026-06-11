@@ -74,6 +74,21 @@ export const GitPanelModal: React.FC<GitPanelModalProps> = ({
     refreshAll()
   }, [open, refreshAll])
 
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => {
+      const accel = e.metaKey || e.ctrlKey
+      if (!accel || e.altKey || e.shiftKey) return
+      const isGit = e.key === 'g' || e.key === 'G' || e.code === 'KeyG'
+      if (!isGit) return
+      e.preventDefault()
+      e.stopPropagation()
+      onClose()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [open, onClose])
+
   const runAndLog = useCallback(
     async (label: string, fn: () => Promise<GitCommandResult>): Promise<void> => {
       setBusy(label)

@@ -47,30 +47,69 @@ export function repaintTerminalCanvasForFollowState(
   repaintTerminalCanvas(term, { skipViewportSync })
 }
 
+function shouldSkipViewportSyncOnRepaint(
+  term: Terminal | null,
+  followState: TerminalFollowState | undefined,
+): boolean {
+  return Boolean(
+    term &&
+    followState &&
+    (isProgrammaticScroll() || shouldStickTerminalToBottom(term, followState)),
+  )
+}
+
+export interface TerminalRepaintScheduler {
+  /** Repintado inmediato en el próximo frame (fit, cambio de tema, tab visible). */
+  schedule: () => void
+  /**
+   * Tras el callback de `term.write()`: doble rAF para ir detrás del render
+   * diferido de xterm v5 (setTimeout). Un solo rAF puede dejar el canvas viejo
+   * hasta que el usuario teclee (KNOWN_ISSUES.md §1).
+   */
+  scheduleAfterWrite: () => void
+  cancel: () => void
+}
+
 export function createTerminalRepaintScheduler(
   getTerm: () => Terminal | null,
   getFollowState?: () => TerminalFollowState | undefined,
-): { schedule: () => void; cancel: () => void } {
+): TerminalRepaintScheduler {
   let raf = 0
+  let afterWriteRaf = 0
+
+  const runRepaint = (): void => {
+    const term = getTerm()
+    const followState = getFollowState?.()
+    repaintTerminalCanvas(term, {
+      skipViewportSync: shouldSkipViewportSyncOnRepaint(term, followState),
+    })
+  }
+
   return {
     schedule: () => {
       if (raf !== 0) return
       raf = requestAnimationFrame(() => {
         raf = 0
-        const term = getTerm()
-        const followState = getFollowState?.()
-        const skipViewportSync = Boolean(
-          term &&
-          followState &&
-          (isProgrammaticScroll() || shouldStickTerminalToBottom(term, followState)),
-        )
-        repaintTerminalCanvas(term, { skipViewportSync })
+        runRepaint()
+      })
+    },
+    scheduleAfterWrite: () => {
+      if (afterWriteRaf !== 0) return
+      afterWriteRaf = requestAnimationFrame(() => {
+        afterWriteRaf = requestAnimationFrame(() => {
+          afterWriteRaf = 0
+          runRepaint()
+        })
       })
     },
     cancel: () => {
       if (raf !== 0) {
         cancelAnimationFrame(raf)
         raf = 0
+      }
+      if (afterWriteRaf !== 0) {
+        cancelAnimationFrame(afterWriteRaf)
+        afterWriteRaf = 0
       }
     },
   }

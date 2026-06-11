@@ -525,8 +525,15 @@ export const TerminalPane: React.FC<Props> = ({
     if (!root || !dock) return
 
     let lastReserve = ''
+    let dockRefitTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefitAfterDockLayout = (): void => {
-      requestAnimationFrame(() => refitTerminalRef.current())
+      // Durante streaming del agente el dock crece a cada token; debounce evita
+      // refits en ráfaga que compiten con el repintado del canvas xterm (§7).
+      if (dockRefitTimer != null) clearTimeout(dockRefitTimer)
+      dockRefitTimer = setTimeout(() => {
+        dockRefitTimer = null
+        requestAnimationFrame(() => refitTerminalRef.current())
+      }, 80)
     }
     const apply = (): void => {
       if (aiExpanded) {
@@ -559,6 +566,10 @@ export const TerminalPane: React.FC<Props> = ({
     return () => {
       ro.disconnect()
       if (dockRaf !== 0) cancelAnimationFrame(dockRaf)
+      if (dockRefitTimer != null) {
+        clearTimeout(dockRefitTimer)
+        dockRefitTimer = null
+      }
     }
   }, [aiExpanded])
 
@@ -736,7 +747,7 @@ export const TerminalPane: React.FC<Props> = ({
           setFindModalHistory([])
         } else {
           onRequestPaneFocusRef.current?.()
-          setGitPanelOpen(true)
+          setGitPanelOpen(prev => !prev)
         }
       })
       return false
@@ -756,7 +767,7 @@ export const TerminalPane: React.FC<Props> = ({
     )
     refitTerminalRef.current = () => {
       fitScheduler.runNow()
-      terminalRepaint.schedule()
+      scheduleTerminalCanvasRepaintImmediate()
     }
     fitScheduler.runNow()
 
@@ -825,6 +836,10 @@ export const TerminalPane: React.FC<Props> = ({
     )
     const scheduleTerminalCanvasRepaint = (): void => {
       if (!termAlive || termRef.current !== term) return
+      terminalRepaint.scheduleAfterWrite()
+    }
+    const scheduleTerminalCanvasRepaintImmediate = (): void => {
+      if (!termAlive || termRef.current !== term) return
       terminalRepaint.schedule()
     }
     let scrollbackHydrated = false
@@ -857,7 +872,7 @@ export const TerminalPane: React.FC<Props> = ({
         if (!termAlive) return
         clearFollowDetached(followStateRef.current)
         followTerminalOutput(term)
-        scheduleTerminalCanvasRepaint()
+        scheduleTerminalCanvasRepaintImmediate()
         markScrollbackHydrated()
       })
     }
@@ -885,7 +900,7 @@ export const TerminalPane: React.FC<Props> = ({
       try {
         term.clear()
         clearFollowDetached(followStateRef.current)
-        scheduleTerminalCanvasRepaint()
+        scheduleTerminalCanvasRepaintImmediate()
         if (scrollbackSaveTimerRef.current) {
           clearTimeout(scrollbackSaveTimerRef.current)
           scrollbackSaveTimerRef.current = null
@@ -990,6 +1005,9 @@ export const TerminalPane: React.FC<Props> = ({
     term.onData(data => {
       absorbUserInput(data)
       writeToPty(data)
+      // Fallback: si el compositor no repintó tras salida PTY, el input de xterm
+      // fuerza render; programamos el mismo repintado post-write por si el eco tarda.
+      scheduleTerminalCanvasRepaint()
     })
     term.onTitleChange(title => { if (title && isActivePaneRef.current) onTitleChange(title) })
 
@@ -1043,7 +1061,7 @@ export const TerminalPane: React.FC<Props> = ({
             } catch {
               /* xterm / PTY carrera */
             }
-            scheduleTerminalCanvasRepaint()
+            scheduleTerminalCanvasRepaintImmediate()
           })
         })
       })
@@ -1143,8 +1161,11 @@ export const TerminalPane: React.FC<Props> = ({
       setTimeout(() => {
         const term = termRef.current!
         const fit = fitRef.current!
+        clearFollowDetached(followStateRef.current)
+        setIsScrolledUp(false)
         fitTerminalPreserveScroll(term, fit, followStateRef.current)
         window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
+        followTerminalOutput(term)
         // Tab con display:none no compone el canvas; segundo frame tras volver visible (Electron).
         requestAnimationFrame(() => {
           const t = termRef.current

@@ -139,7 +139,7 @@ const en = {
 
   git: {
     title: 'git',
-    footerHint: 'session cwd · pull with --ff-only · commit only with staging · Actions via gh · esc close',
+    footerHint: 'session cwd · pull with --ff-only · commit only with staging · Actions via gh · ⌘G or esc close',
     loadingAriaLabel: 'Loading git status',
     cwdTooltip: 'Session folder (cwd): {{cwd}}',
     refreshButton: 'refresh',

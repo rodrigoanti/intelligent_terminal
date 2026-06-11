@@ -81,6 +81,28 @@ describe('repaintTerminalCanvas', () => {
     expect(refresh).toHaveBeenCalledWith(0, 23)
   })
 
+  it('scheduleAfterWrite repaints after two animation frames', async () => {
+    const refresh = vi.fn()
+    const clearTextureAtlas = vi.fn()
+    const viewport = { syncScrollArea: vi.fn() }
+    const term = {
+      rows: 24,
+      refresh,
+      clearTextureAtlas,
+      getSelection: () => '',
+      buffer: { active: { type: 'normal' as const, viewportY: 10, baseY: 10 } },
+      element: document.createElement('div'),
+      _core: { viewport },
+    } as unknown as Terminal & { clearTextureAtlas: () => void }
+
+    const scheduler = createTerminalRepaintScheduler(() => term)
+    scheduler.scheduleAfterWrite()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(refresh).not.toHaveBeenCalled()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(refresh).toHaveBeenCalledWith(0, 23)
+  })
+
   it('repaintTerminalCanvasForFollowState skips sync when sticking to bottom', () => {
     const refresh = vi.fn()
     const clearTextureAtlas = vi.fn()
