@@ -4,7 +4,7 @@ import './Input.css'
 export type InputSize = 'sm' | 'md'
 export type InputVariant = 'default' | 'inline'
 
-export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'className'> {
+export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'className' | 'size'> {
   size?: InputSize
   variant?: InputVariant
   className?: string

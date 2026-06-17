@@ -52,8 +52,12 @@
   border-bottom-color: var(--accent);
 }
 
-.tab--drag-over {
-  border-left: 2px solid var(--accent);
+.tab--drag-over-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.tab--drag-over-after {
+  box-shadow: inset -2px 0 0 var(--accent);
 }
 
 /* ── Terminal icon ─────────────────────────────── */

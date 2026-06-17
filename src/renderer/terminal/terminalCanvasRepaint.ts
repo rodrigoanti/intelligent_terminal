@@ -7,6 +7,8 @@ type TerminalWithAtlas = Terminal & { clearTextureAtlas?: () => void }
 export interface RepaintTerminalCanvasOptions {
   /** Evita `syncScrollArea` mientras el follow programático aún alinea buffer y DOM. */
   skipViewportSync?: boolean
+  /** Omite `clearTextureAtlas` (re-rasteriza todos los glifos: caro por chunk PTY). */
+  skipTextureAtlas?: boolean
 }
 
 /**
@@ -23,7 +25,7 @@ export function repaintTerminalCanvas(
     if (term.rows < 1) return
     if (!opts?.skipViewportSync) syncTerminalViewport(term)
     term.refresh(0, term.rows - 1)
-    ;(term as TerminalWithAtlas).clearTextureAtlas?.()
+    if (!opts?.skipTextureAtlas) (term as TerminalWithAtlas).clearTextureAtlas?.()
   } catch {
     /* dispose / dimensions */
   }
@@ -70,18 +72,30 @@ export interface TerminalRepaintScheduler {
   cancel: () => void
 }
 
+/** Mínimo entre limpiezas del atlas en repintados post-write (streaming PTY). */
+const ATLAS_CLEAR_MIN_INTERVAL_MS = 500
+
 export function createTerminalRepaintScheduler(
   getTerm: () => Terminal | null,
   getFollowState?: () => TerminalFollowState | undefined,
 ): TerminalRepaintScheduler {
   let raf = 0
   let afterWriteRaf = 0
+  let lastAtlasClearAt = 0
 
-  const runRepaint = (): void => {
+  const runRepaint = (afterWrite: boolean): void => {
     const term = getTerm()
     const followState = getFollowState?.()
+    const now = Date.now()
+    const skipTextureAtlas = afterWrite && now - lastAtlasClearAt < ATLAS_CLEAR_MIN_INTERVAL_MS
+    if (!skipTextureAtlas) lastAtlasClearAt = now
     repaintTerminalCanvas(term, {
-      skipViewportSync: shouldSkipViewportSyncOnRepaint(term, followState),
+      // Post-write el scroll pertenece al follow del callback de `term.write` y
+      // al sync interno de xterm; un `syncScrollArea` aquí con el buffer aún
+      // retrasado tira del scrollTop hacia arriba y oscila contra el follow
+      // (salto arriba/abajo por frame al streamear un agente).
+      skipViewportSync: afterWrite || shouldSkipViewportSyncOnRepaint(term, followState),
+      skipTextureAtlas,
     })
   }
 
@@ -90,7 +104,7 @@ export function createTerminalRepaintScheduler(
       if (raf !== 0) return
       raf = requestAnimationFrame(() => {
         raf = 0
-        runRepaint()
+        runRepaint(false)
       })
     },
     scheduleAfterWrite: () => {
@@ -98,7 +112,7 @@ export function createTerminalRepaintScheduler(
       afterWriteRaf = requestAnimationFrame(() => {
         afterWriteRaf = requestAnimationFrame(() => {
           afterWriteRaf = 0
-          runRepaint()
+          runRepaint(true)
         })
       })
     },

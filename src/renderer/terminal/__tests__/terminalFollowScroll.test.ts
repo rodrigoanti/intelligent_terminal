@@ -156,4 +156,24 @@ describe('terminalFollowScroll', () => {
     expect(shouldFollowTerminalOutput(term, state)).toBe(false)
     expect(shouldStickTerminalToBottom(term, state)).toBe(true)
   })
+
+  it('shouldStickTerminalToBottom sticks when DOM lagged but buffer has unconsumed output', () => {
+    const viewport = document.createElement('div')
+    viewport.className = 'xterm-viewport'
+    // scrollHeight creció antes del sync interno: scrollTop aún en 0.
+    Object.defineProperty(viewport, 'scrollTop', { value: 0, writable: true })
+    Object.defineProperty(viewport, 'scrollHeight', { value: 1000, writable: true })
+    Object.defineProperty(viewport, 'clientHeight', { value: 100, writable: true })
+    const root = document.createElement('div')
+    root.appendChild(viewport)
+
+    const state: TerminalFollowState = { userDetached: false }
+    const term = {
+      buffer: { active: { type: 'normal' as const, viewportY: 0, baseY: 120 } },
+      getSelection: () => '',
+      element: root,
+    } as never
+
+    expect(shouldStickTerminalToBottom(term, state)).toBe(true)
+  })
 })

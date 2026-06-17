@@ -1,9 +1,6 @@
-export interface TabSplitSizes {
-  /** Fracción 0–1 del ancho de la columna izquierda (paneles con 2 columnas). */
-  columnRatio: number
-  /** Fracción 0–1 de la altura de la fila superior (3 y 4 paneles). */
-  rowRatio?: number
-}
+import type { TabSplitSizes } from '../shared/tabSession'
+
+export type { TabSplitSizes }
 
 export const DEFAULT_COLUMN_RATIO = 0.5
 export const DEFAULT_ROW_RATIO = 0.5

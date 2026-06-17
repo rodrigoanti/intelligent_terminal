@@ -5,6 +5,7 @@ import { ConfirmTerminalModal } from './ConfirmTerminalModal'
 import { TabItem } from './TabItem'
 import { TabAddButton } from './TabAddButton'
 import { buildTabDragThumbnail } from '../dragThumbnailUtils'
+import { dropPlaceFromPointer, isDragLeaveForContainer } from '../arrayReorder'
 import './TabBar.css'
 
 interface Props {
@@ -14,7 +15,7 @@ interface Props {
   onAdd: () => void
   onClose: (id: string) => void
   onRename: (id: string, name: string) => void
-  onReorder: (dragId: string, dropId: string) => void
+  onReorder: (dragId: string, dropId: string, place: 'before' | 'after') => void
   busyTabIds: Set<string>
 }
 
@@ -29,6 +30,7 @@ export const TabBar = forwardRef<TabBarHandle, Props>(function TabBar({
   const { t } = useT()
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [dragOverPlace, setDragOverPlace] = useState<'before' | 'after'>('before')
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState('')
   const [closeTabConfirm, setCloseTabConfirm] = useState<{ id: string; title: string } | null>(null)
@@ -80,6 +82,7 @@ export const TabBar = forwardRef<TabBarHandle, Props>(function TabBar({
               tabNumber={index + 1}
               isActive={tab.id === activeTabId}
               isDragOver={dragOverId === tab.id && dragId !== tab.id}
+              dragOverPlace={dragOverId === tab.id && dragId !== tab.id ? dragOverPlace : null}
               isBusy={busyTabIds.has(tab.id)}
               isEditing={editingTabId === tab.id}
               editDraft={editDraft}
@@ -112,16 +115,24 @@ export const TabBar = forwardRef<TabBarHandle, Props>(function TabBar({
               onDragOver={e => {
                 e.preventDefault()
                 e.dataTransfer.dropEffect = 'move'
+                const place = dropPlaceFromPointer(e.clientX, (e.currentTarget as HTMLElement).getBoundingClientRect())
                 if (dragOverId !== tab.id) setDragOverId(tab.id)
+                if (dragOverPlace !== place) setDragOverPlace(place)
               }}
               onDrop={e => {
                 e.preventDefault()
-                if (dragId && dragId !== tab.id) onReorder(dragId, tab.id)
+                if (dragId && dragId !== tab.id) {
+                  const place = dropPlaceFromPointer(e.clientX, (e.currentTarget as HTMLElement).getBoundingClientRect())
+                  onReorder(dragId, tab.id, place)
+                }
                 setDragId(null)
                 setDragOverId(null)
               }}
               onDragEnd={() => { setDragId(null); setDragOverId(null) }}
-              onDragLeave={() => { if (dragOverId === tab.id) setDragOverId(null) }}
+              onDragLeave={e => {
+                if (!isDragLeaveForContainer(e.currentTarget as HTMLElement, e.relatedTarget)) return
+                if (dragOverId === tab.id) setDragOverId(null)
+              }}
             />
           ))}
         </div>

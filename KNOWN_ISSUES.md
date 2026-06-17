@@ -180,6 +180,34 @@ El usuario puede elegir otro tema en el modal de temas.
 
 ---
 
+## 8. Terminal xterm: oscilación arriba/abajo del scroll al streamear un agente
+
+### Síntomas
+
+- Con un **agente** (Claude Code u otro TUI) streameando salida en la terminal, el viewport **salta arriba y abajo** varias veces por segundo (no un salto único como §7, sino oscilación continua).
+- Empeora con el **dock IA colapsado** creciendo a cada token (refits en ráfaga).
+
+### Causa
+
+| Área | Descripción |
+|------|-------------|
+| **`syncScrollArea` post-write** | El repintado tras cada chunk PTY (`scheduleAfterWrite`) solo omitía `syncScrollArea` si `shouldStickTerminalToBottom` era true **en ese instante** (2 rAF después del write). Mid-stream hay ventanas donde el buffer va retrasado > slack **y** el `scrollHeight` DOM acaba de crecer (DOM ya no «abajo») → stick evalúa false → `syncScrollArea(true)` alinea el `scrollTop` con el `viewportY` retrasado = **salto arriba**; el callback del siguiente `term.write` vuelve a bajar = oscilación por frame. |
+| **`clearTextureAtlas` por chunk** | Re-rasterizar todos los glifos en cada chunk PTY tira frames, agranda el desfase buffer/DOM y amplía esas ventanas. |
+| **ResizeObserver del contenedor sin coalescer** | El debounce de 80 ms del dock (`scheduleRefitAfterDockLayout`) era inútil: el cambio de `--terminal-ai-dock-reserve` también dispara el ResizeObserver del contenedor → `fitScheduler.schedule()` **por frame** → reflow + `ptyResize` (SIGWINCH) por token → el TUI redibuja entero → más churn de scroll. |
+
+### Mitigaciones
+
+| Archivo | Qué hace |
+|---------|----------|
+| `src/renderer/terminal/terminalCanvasRepaint.ts` | Los repintados **post-write nunca** llaman a `syncScrollArea` (la posición pertenece al follow del callback de `term.write` y al sync interno de xterm). `clearTextureAtlas` en post-write como mucho cada `ATLAS_CLEAR_MIN_INTERVAL_MS` (500 ms); `schedule()` (fit/tema/tab) mantiene el comportamiento completo de §1. |
+| `src/renderer/terminal/terminalFitScheduler.ts` | `schedule()` coalesce ráfagas: un fit como mucho cada `FIT_BURST_COALESCE_MS` (100 ms) cuando llegan resizes continuos; `runNow()` sigue siendo inmediato y cancela el fit en ráfaga pendiente. |
+
+### Regresión a evitar
+
+- Volver a sincronizar el viewport (`syncScrollArea`) desde el camino post-write «solo cuando no hay stick»: el estado de stick es transitorio durante streaming y la ventana false reintroduce la oscilación.
+
+---
+
 ## Cómo ampliar este documento
 
 Al cerrar un bug que sea **arquitectónico** (Electron, foco, persistencia, PTY), añadir aquí una sección corta con síntoma → causa → archivo/clase responsable de la mitigación.

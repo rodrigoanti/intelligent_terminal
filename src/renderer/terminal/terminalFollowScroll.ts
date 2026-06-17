@@ -106,6 +106,11 @@ export function shouldStickTerminalToBottom(
   if (term.getSelection().length > 0) return false
   if (shouldFollowTerminalOutput(term, state, slackLines)) return true
   try {
+    const buf = term.buffer.active
+    // Salida nueva bajo el viewport con auto-follow activo: lag buffer/DOM durante
+    // streaming (p. ej. scrollHeight DOM creció y scrollTop aún en 0). Evita que
+    // fit() restaure scrollToLine(savedTop) con savedTop === 0.
+    if (buf.type === 'normal' && buf.viewportY < buf.baseY) return true
     const viewportEl = getTerminalViewportElement(term)
     return viewportEl != null && isDomViewportAtBottom(viewportEl)
   } catch {

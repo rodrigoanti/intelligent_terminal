@@ -1,5 +1,13 @@
 import { stripAnsiInputSequences } from '@shared/ptyInputSanitize'
 
+/** Alineado con readline/zsh `backward-kill-word` (^W). */
+export function backwardKillWordDraft(draft: string): string {
+  let i = draft.length
+  while (i > 0 && draft[i - 1] === ' ') i--
+  while (i > 0 && draft[i - 1] !== ' ') i--
+  return draft.slice(0, i)
+}
+
 /**
  * Reconstruye el borrador de línea del usuario y emite líneas completas (Enter / CR / LF).
  * Debe alimentarse con los mismos bytes que se envían al PTY vía xterm `onData` / writeToTty.
@@ -21,6 +29,9 @@ export function feedCompletedUserLines(
     } else if (ch === '\x15') {
       /* Ctrl+U — borrar borrador local (alineado con readline/zsh) */
       draft = ''
+    } else if (ch === '\x17') {
+      /* Ctrl+W / backward-kill-word */
+      draft = backwardKillWordDraft(draft)
     } else if (ch === '\x7f' || ch === '\b') {
       draft = draft.slice(0, -1)
     } else if (ch >= ' ' && ch !== '\x7f') {

@@ -238,11 +238,18 @@
 .terminal-pane-main {
   flex: 1;
   min-height: 0;
-  position: relative;
   display: flex;
   flex-direction: column;
   /* Reserva del overlay IA + un poco de aire sobre la barra colapsada */
   padding-bottom: calc(var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap));
+}
+
+.terminal-pane-main__terminal {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .terminal-container {
@@ -262,20 +269,14 @@
 
 
 .terminal-suggest-stack {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap));
-  z-index: 58;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   max-height: min(40vh, 320px);
   min-height: 0;
-  pointer-events: auto;
   border-top: 1px solid var(--border);
   background: var(--bg-secondary);
-  box-shadow: 0 -8px 24px color-mix(in srgb, black 18%, transparent);
 }
 
 .terminal-suggest-stack > * {
@@ -377,67 +378,9 @@
   border-top: none;
 }
 
-.cmd-suggest-recent-block--sep {
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-}
-
-.cmd-suggest-section-header {
+.cmd-suggest-list {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 8px 3px 12px;
-  background: color-mix(in srgb, var(--accent) 8%, color-mix(in srgb, var(--surface) 30%, var(--bg-secondary)));
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
-}
-
-.cmd-suggest-section-title--in-header {
-  padding: 0;
-  border: none;
-  background: transparent;
-  flex: 1;
-  min-width: 0;
-}
-
-.cmd-suggest-clear-history-btn {
-  flex-shrink: 0;
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-  background: color-mix(in srgb, var(--surface) 55%, var(--bg-secondary));
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color 0.08s, background 0.08s, border-color 0.08s;
-}
-
-.cmd-suggest-clear-history-btn:hover {
-  color: var(--text);
-  background: var(--surface);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-}
-
-/* Varias secciones (recientes + estáticas): evita dos barras sticky superpuestas al hacer scroll */
-.cmd-suggest .cmd-suggest-section-title {
-  position: static;
-}
-
-.cmd-suggest-section-title {
-  padding: 4px 12px 3px;
-  font-family: var(--font-ui);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--accent) 75%, var(--text-muted));
-  background: color-mix(in srgb, var(--accent) 8%, color-mix(in srgb, var(--surface) 30%, var(--bg-secondary)));
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  flex-direction: column;
 }
 
 .cmd-suggest-item {

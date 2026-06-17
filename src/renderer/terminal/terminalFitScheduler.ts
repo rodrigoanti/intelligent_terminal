@@ -66,6 +66,14 @@ export interface TerminalFitScheduler {
   runNow: () => void
 }
 
+/**
+ * Coalescencia de ráfagas de resize: el dock IA colapsado crece a cada token
+ * del agente y el ResizeObserver del contenedor dispararía un fit por frame
+ * (reflow del buffer + `ptyResize` → SIGWINCH → redibujado completo del TUI).
+ * Un fit como mucho cada FIT_BURST_COALESCE_MS durante la ráfaga.
+ */
+export const FIT_BURST_COALESCE_MS = 100
+
 export function createTerminalFitScheduler(
   getTerm: () => Terminal | null,
   getFit: () => FitAddon | null,
@@ -74,6 +82,8 @@ export function createTerminalFitScheduler(
   onDimensionsChange: (cols: number, rows: number) => void,
 ): TerminalFitScheduler {
   let raf = 0
+  let burstTimer: ReturnType<typeof setTimeout> | null = null
+  let lastFitAt = 0
   let lastCols = -1
   let lastRows = -1
   let lastContainerW = -1
@@ -81,6 +91,7 @@ export function createTerminalFitScheduler(
 
   const runFit = (): void => {
     raf = 0
+    lastFitAt = Date.now()
     const term = getTerm()
     const fit = getFit()
     if (!term || !fit) return
@@ -121,22 +132,33 @@ export function createTerminalFitScheduler(
     }
   }
 
+  const cancelPending = (): void => {
+    if (burstTimer != null) {
+      clearTimeout(burstTimer)
+      burstTimer = null
+    }
+    if (raf !== 0) {
+      cancelAnimationFrame(raf)
+      raf = 0
+    }
+  }
+
   return {
     schedule: () => {
-      if (raf !== 0) return
-      raf = requestAnimationFrame(runFit)
-    },
-    cancel: () => {
-      if (raf !== 0) {
-        cancelAnimationFrame(raf)
-        raf = 0
+      if (raf !== 0 || burstTimer != null) return
+      const elapsed = Date.now() - lastFitAt
+      if (elapsed >= FIT_BURST_COALESCE_MS) {
+        raf = requestAnimationFrame(runFit)
+        return
       }
+      burstTimer = setTimeout(() => {
+        burstTimer = null
+        raf = requestAnimationFrame(runFit)
+      }, FIT_BURST_COALESCE_MS - elapsed)
     },
+    cancel: cancelPending,
     runNow: () => {
-      if (raf !== 0) {
-        cancelAnimationFrame(raf)
-        raf = 0
-      }
+      cancelPending()
       runFit()
     },
   }

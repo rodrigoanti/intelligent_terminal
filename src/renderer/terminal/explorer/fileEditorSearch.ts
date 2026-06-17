@@ -24,16 +24,48 @@ const fileSearchField = StateField.define<SearchQuery>({
   },
 })
 
+interface SearchMatch {
+  from: number
+  to: number
+}
+
+/** `SearchQuery.getCursor` devuelve un `Iterator` plano (no iterable con for…of). */
+function eachMatch(
+  state: EditorState,
+  query: SearchQuery,
+  from: number,
+  to: number,
+  fn: (match: SearchMatch) => void,
+): void {
+  const cursor = query.getCursor(state, from, to)
+  let result = cursor.next()
+  while (!result.done) {
+    fn(result.value)
+    result = cursor.next()
+  }
+}
+
+function firstMatchFrom(state: EditorState, query: SearchQuery, from: number): SearchMatch | null {
+  const cursor = query.getCursor(state, from)
+  const result = cursor.next()
+  return result.done ? null : result.value
+}
+
+function lastMatchBefore(state: EditorState, query: SearchQuery, before: number): SearchMatch | null {
+  let found: SearchMatch | null = null
+  eachMatch(state, query, 0, before, match => { found = match })
+  return found
+}
+
 function buildMatchDecorations(state: EditorState): DecorationSet {
   const query = state.field(fileSearchField)
   if (!query.valid || !query.search) return Decoration.none
 
   const builder = new RangeSetBuilder<Decoration>()
-  const cursor = query.getCursor(state, 0, state.doc.length)
-  for (const { from, to } of cursor) {
+  eachMatch(state, query, 0, state.doc.length, ({ from, to }) => {
     const selected = state.selection.ranges.some(r => r.from === from && r.to === to)
     builder.add(from, to, selected ? selectedMatchMark : matchMark)
-  }
+  })
   return builder.finish()
 }
 
@@ -70,15 +102,14 @@ export function searchQueryFromTerm(term: string): SearchQuery {
 export function countSearchMatches(state: EditorState, query: SearchQuery): number {
   if (!query.valid || !query.search) return 0
   let count = 0
-  const cursor = query.getCursor(state, 0, state.doc.length)
-  for (const _ of cursor) count++
+  eachMatch(state, query, 0, state.doc.length, () => { count++ })
   return count
 }
 
 export function fileFindFirst(view: EditorView): boolean {
   const query = view.state.field(fileSearchField)
   if (!query.valid || !query.search) return false
-  const match = query.create().nextMatch(view.state, 0, 0)
+  const match = firstMatchFrom(view.state, query, 0)
   if (!match) return false
   const selection = EditorSelection.single(match.from, match.to)
   view.dispatch({
@@ -93,7 +124,8 @@ export function fileFindNext(view: EditorView): boolean {
   const query = view.state.field(fileSearchField)
   if (!query.valid || !query.search) return false
   const { to } = view.state.selection.main
-  const match = query.create().nextMatch(view.state, to, to)
+  // Igual que el `nextMatch` interno: sigue desde la selección y da la vuelta al llegar al final.
+  const match = firstMatchFrom(view.state, query, to) ?? firstMatchFrom(view.state, query, 0)
   if (!match) return false
   const selection = EditorSelection.single(match.from, match.to)
   view.dispatch({
@@ -108,7 +140,9 @@ export function fileFindPrevious(view: EditorView): boolean {
   const query = view.state.field(fileSearchField)
   if (!query.valid || !query.search) return false
   const { from } = view.state.selection.main
-  const match = query.create().prevMatch(view.state, from, from)
+  // Último match antes de la selección; sin resultado, da la vuelta hasta el final del documento.
+  const match = lastMatchBefore(view.state, query, from)
+    ?? lastMatchBefore(view.state, query, view.state.doc.length)
   if (!match) return false
   const selection = EditorSelection.single(match.from, match.to)
   view.dispatch({

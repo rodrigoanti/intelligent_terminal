@@ -92,7 +92,7 @@ export function buildTabDragThumbnail(sourceTab: HTMLElement): HTMLElement {
   ].join(';')
 
   const clone = sourceTab.cloneNode(true) as HTMLElement
-  clone.classList.remove('tab--drag-over')
+  clone.classList.remove('tab--drag-over-before', 'tab--drag-over-after')
   clone.style.cssText = [
     `width:${w}px`, `height:${h}px`,
     'min-width:unset', 'max-width:none',

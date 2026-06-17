@@ -8,6 +8,7 @@ export interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonE
   variant?: ButtonVariant
   size?: ButtonSize
   children?: React.ReactNode
+  className?: string
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -15,11 +16,12 @@ export const Button: React.FC<ButtonProps> = ({
   size = 'md',
   children,
   type = 'button',
+  className = '',
   ...rest
 }) => (
   <button
     type={type}
-    className={`btn btn--${variant} btn--${size}`}
+    className={['btn', `btn--${variant}`, `btn--${size}`, className].filter(Boolean).join(' ')}
     {...rest}
   >
     {children}

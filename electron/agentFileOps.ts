@@ -1,5 +1,5 @@
-import { dirname, normalize, relative, resolve } from 'path'
-import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs'
+import { basename, dirname, normalize, relative, resolve } from 'path'
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs'
 
 const MAX_READ_BYTES = 600_000
 
@@ -20,6 +20,12 @@ function normalizeRelSegments(segments: string[]): string[] {
   return s
 }
 
+function isInsideRealRoot(realRoot: string, absPath: string): boolean {
+  const realRel = relative(realRoot, absPath)
+  if (realRel.startsWith('..')) return false
+  return !realRel.split(/[/\\]/).some(s => s === '..')
+}
+
 export function resolveSafeProjectPath(projectRoot: string, relPathRaw: string): string | null {
   const raw = String(relPathRaw).trim().replace(/\\/g, '/')
   if (!raw || raw.includes('\0')) return null
@@ -33,14 +39,31 @@ export function resolveSafeProjectPath(projectRoot: string, relPathRaw: string):
   if (!rel || rel === '.' || rel.startsWith('..') || rel.split(/[/\\]/).some(s => s === '..')) {
     return null
   }
+
   try {
     const realRoot = realpathSync.native(root)
-    const realAbs = realpathSync.native(abs)
-    const realRel = relative(realRoot, realAbs)
-    if (!realRel || realRel === '.' || realRel.startsWith('..') || realRel.split(/[/\\]/).some(s => s === '..')) {
-      return null
+
+    if (existsSync(abs)) {
+      const realAbs = realpathSync.native(abs)
+      if (!isInsideRealRoot(realRoot, realAbs)) return null
+      return realAbs
     }
-    return realAbs
+
+    const tail: string[] = []
+    let probe = abs
+    while (!existsSync(probe)) {
+      tail.unshift(basename(probe))
+      const parent = dirname(probe)
+      if (parent === probe) break
+      probe = parent
+    }
+
+    const realBase = realpathSync.native(probe)
+    if (!isInsideRealRoot(realRoot, realBase)) return null
+
+    const resolved = tail.length > 0 ? resolve(realBase, ...tail) : realBase
+    if (!isInsideRealRoot(realRoot, resolved)) return null
+    return resolved
   } catch {
     return null
   }

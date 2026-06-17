@@ -28,22 +28,18 @@ import {
 import { SettingsModal } from './components/SettingsModal'
 import { ThemePickerModal } from './components/ThemePickerModal'
 import { Titlebar } from './components/Titlebar'
+import {
+  computeTabInsertIndex,
+  isDragLeaveForContainer,
+  moveItemToIndex,
+  swapItemsAtIndices,
+} from './arrayReorder'
 import { deriveTabCounter, sanitizePersistedSession } from './sessionSanitize'
 import './styles/app.css'
 
-export interface TabSession {
-  id: string
-  title: string
-  /** Tras renombrar a mano: el título del PTY no sustituye `title` */
-  titleLocked?: boolean
-  /** Cada panel = una sesión PTY (UUID); como máximo `MAX_PANES_PER_TAB` por pestaña */
-  paneIds: string[]
-  activePaneId: string
-  /** Proporciones de divisores entre paneles (persistido en session.json). */
-  splitSizes?: TabSplitSizes
-}
+import type { TabSession } from '../shared/tabSession'
 
-export type { TabSplitSizes } from './tabSplitSizes'
+export type { TabSession, TabSplitSizes } from '../shared/tabSession'
 
 /** Máximo de splits por pestaña (layout 2×2). */
 export const MAX_PANES_PER_TAB = 4
@@ -585,15 +581,17 @@ export const App: React.FC = () => {
     setTabs(prev => prev.map(t => (t.id === id ? { ...t, title: name, titleLocked: true } : t)))
   }, [])
 
-  const handleReorderTabs = useCallback((dragId: string, dropId: string) => {
+  const handleReorderTabs = useCallback((
+    dragId: string,
+    dropId: string,
+    place: 'before' | 'after',
+  ) => {
     setTabs(prev => {
-      const next = [...prev]
-      const fromIdx = next.findIndex(t => t.id === dragId)
-      const toIdx = next.findIndex(t => t.id === dropId)
-      if (fromIdx < 0 || toIdx < 0) return prev
-      const [moved] = next.splice(fromIdx, 1)
-      next.splice(toIdx, 0, moved)
-      return next
+      const fromIdx = prev.findIndex(t => t.id === dragId)
+      const dropIdx = prev.findIndex(t => t.id === dropId)
+      if (fromIdx < 0 || dropIdx < 0) return prev
+      const insertAt = computeTabInsertIndex(prev.length, fromIdx, dropIdx, place)
+      return moveItemToIndex(prev, fromIdx, insertAt)
     })
   }, [])
 
@@ -601,13 +599,10 @@ export const App: React.FC = () => {
     if (dragPaneId === dropPaneId) return
     setTabs(prev => prev.map(tab => {
       if (tab.id !== tabId) return tab
-      const panes = [...tab.paneIds]
-      const fromIdx = panes.indexOf(dragPaneId)
-      const toIdx = panes.indexOf(dropPaneId)
+      const fromIdx = tab.paneIds.indexOf(dragPaneId)
+      const toIdx = tab.paneIds.indexOf(dropPaneId)
       if (fromIdx < 0 || toIdx < 0) return tab
-      const [moved] = panes.splice(fromIdx, 1)
-      panes.splice(toIdx, 0, moved)
-      return { ...tab, paneIds: panes }
+      return { ...tab, paneIds: swapItemsAtIndices(tab.paneIds, fromIdx, toIdx) }
     }))
   }, [])
 
@@ -653,7 +648,8 @@ export const App: React.FC = () => {
     handleReorderPanes(tabId, d.dragPaneId, dropPaneId)
   }, [clearPaneReorderDnD, handleReorderPanes])
 
-  const onPaneCellDragLeave = useCallback((paneId: string): void => {
+  const onPaneCellDragLeave = useCallback((paneId: string, e: DragEvent): void => {
+    if (!isDragLeaveForContainer(e.currentTarget as HTMLElement, e.relatedTarget)) return
     setPaneDragOverPaneId(prev => (prev === paneId ? null : prev))
   }, [])
 
@@ -850,7 +846,7 @@ export const App: React.FC = () => {
             onDragEnter: (e: DragEvent) => { onPaneCellDragHover(tab.id, paneId, e) },
             onDragOverCapture: (e: DragEvent) => { onPaneCellDragHover(tab.id, paneId, e) },
             onDrop: (e: DragEvent) => { onPaneCellDrop(tab.id, paneId, e) },
-            onDragLeave: () => { onPaneCellDragLeave(paneId) },
+            onDragLeave: (e: DragEvent) => { onPaneCellDragLeave(paneId, e) },
           }
         : {})}
     >

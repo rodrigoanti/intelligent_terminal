@@ -8,7 +8,7 @@ describe('fileExplorerClipboardOps cut fallback', () => {
 
     const sources: string[] = []
     let usedSystemClipboard = false
-    let effectiveMode = mode
+    let effectiveMode: 'cut' | 'copy' = mode
 
     if (internalPaths.length === 0) {
       for (const p of systemPaths) sources.push(p)

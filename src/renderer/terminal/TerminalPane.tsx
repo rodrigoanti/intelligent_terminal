@@ -377,6 +377,8 @@ export const TerminalPane: React.FC<Props> = ({
   const toggleExplorerRef = useRef<() => void>(() => {})
   const scrollTerminalToBottomRef = useRef<() => void>(() => {})
   const refitTerminalRef = useRef<() => void>(() => {})
+  /** Fit coalescido (dock/sugerencias): evita runNow en ráfaga durante streaming. */
+  const scheduleRefitTerminalRef = useRef<() => void>(() => {})
   const explorerRef = useRef<FileExplorerSidebarHandle>(null)
   const explorerOpen = fileExplorer.open
   const explorerOpenRef = useRef(explorerOpen)
@@ -532,7 +534,7 @@ export const TerminalPane: React.FC<Props> = ({
       if (dockRefitTimer != null) clearTimeout(dockRefitTimer)
       dockRefitTimer = setTimeout(() => {
         dockRefitTimer = null
-        requestAnimationFrame(() => refitTerminalRef.current())
+        requestAnimationFrame(() => scheduleRefitTerminalRef.current())
       }, 80)
     }
     const apply = (): void => {
@@ -729,29 +731,7 @@ export const TerminalPane: React.FC<Props> = ({
     term.loadAddon(links)
     term.loadAddon(serialize)
     term.open(containerRef.current)
-    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.type !== 'keydown') return true
-      const accel = e.metaKey || e.ctrlKey
-      if (!accel || e.altKey || e.shiftKey) return true
 
-      const isFind = e.key === 'f' || e.key === 'F' || e.code === 'KeyF'
-      const isGit = e.key === 'g' || e.key === 'G' || e.code === 'KeyG'
-      if (!isFind && !isGit) return true
-
-      e.preventDefault()
-      e.stopPropagation()
-      queueMicrotask(() => {
-        if (isFind) {
-          setFindModalOpen(true)
-          setFindModalBuffer([])
-          setFindModalHistory([])
-        } else {
-          onRequestPaneFocusRef.current?.()
-          setGitPanelOpen(prev => !prev)
-        }
-      })
-      return false
-    })
     termRef.current = term
     fitRef.current = fit
     serializeAddonRef.current = serialize
@@ -768,6 +748,9 @@ export const TerminalPane: React.FC<Props> = ({
     refitTerminalRef.current = () => {
       fitScheduler.runNow()
       scheduleTerminalCanvasRepaintImmediate()
+    }
+    scheduleRefitTerminalRef.current = () => {
+      fitScheduler.schedule()
     }
     fitScheduler.runNow()
 
@@ -982,6 +965,56 @@ export const TerminalPane: React.FC<Props> = ({
     }
     absorbUserInputRef.current = absorbUserInput
 
+    const sendWordBackwardKill = (): void => {
+      const seq = '\x17'
+      absorbUserInput(seq)
+      writeToPty(seq)
+      scheduleTerminalCanvasRepaint()
+    }
+
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type !== 'keydown') return true
+
+      const isBackspace = e.key === 'Backspace' || e.code === 'Backspace'
+      /*
+       * macOS / xterm.js:
+       * - Ctrl+Backspace → \b (solo mueve el cursor, no borra)
+       * - ⌥/⌘+Backspace → \x1b\x7f o \x7f (a menudo no enlazado a backward-kill-word en zsh)
+       * Enviamos ^W (backward-kill-word), estándar en zsh/bash/readline.
+       */
+      if (
+        isBackspace &&
+        !e.shiftKey &&
+        ((e.altKey || e.metaKey) && !e.ctrlKey || e.ctrlKey && !e.altKey && !e.metaKey)
+      ) {
+        e.preventDefault()
+        e.stopPropagation()
+        sendWordBackwardKill()
+        return false
+      }
+
+      const accel = e.metaKey || e.ctrlKey
+      if (!accel || e.altKey || e.shiftKey) return true
+
+      const isFind = e.key === 'f' || e.key === 'F' || e.code === 'KeyF'
+      const isGit = e.key === 'g' || e.key === 'G' || e.code === 'KeyG'
+      if (!isFind && !isGit) return true
+
+      e.preventDefault()
+      e.stopPropagation()
+      queueMicrotask(() => {
+        if (isFind) {
+          setFindModalOpen(true)
+          setFindModalBuffer([])
+          setFindModalHistory([])
+        } else {
+          onRequestPaneFocusRef.current?.()
+          setGitPanelOpen(prev => !prev)
+        }
+      })
+      return false
+    })
+
     ptyInjectRef.current = (raw: string): void => {
       absorbUserInput(raw)
       writeToPty(raw)
@@ -1119,6 +1152,7 @@ export const TerminalPane: React.FC<Props> = ({
       } catch { /* ignore */ }
       serializeAddonRef.current = null
       refitTerminalRef.current = () => {}
+      scheduleRefitTerminalRef.current = () => {}
       termRef.current = null
       fitRef.current = null
       term.dispose()
@@ -1280,16 +1314,6 @@ export const TerminalPane: React.FC<Props> = ({
     handleRecentCmdPick(line)
   }
 
-  const handleClearCmdHistory = useCallback((): void => {
-    if (cmdHistorySaveTimerRef.current) {
-      clearTimeout(cmdHistorySaveTimerRef.current)
-      cmdHistorySaveTimerRef.current = null
-    }
-    setRecentCommands([])
-    window.api.deleteCmdHistory(sessionId)
-    termRef.current?.focus()
-  }, [sessionId])
-
   const visibleSnippets: CmdSnippet[] = cmdSuggestCmd
     ? filterCmdSnippetsByDraft(CMD_SNIPPETS[cmdSuggestCmd] ?? [], cmdSuggestDraft)
     : []
@@ -1301,6 +1325,11 @@ export const TerminalPane: React.FC<Props> = ({
 
   const showCmdSuggestPanel = visibleSnippets.length > 0 || visibleRecentMatches.length > 0
   const showCdSuggestPanel = cdVisible && (visibleLocalDirs.length > 0 || cdPaths.length > 0)
+  const showSuggestStack = showCmdSuggestPanel || showCdSuggestPanel
+
+  useEffect(() => {
+    scheduleRefitTerminalRef.current()
+  }, [showSuggestStack, visibleSnippets.length, visibleRecentMatches.length, visibleLocalDirs.length, visiblePaths.length])
 
   const aiChatZoom =
     (config.fontSize ?? CONFIG_DEFAULTS.fontSize) / CONFIG_DEFAULTS.fontSize
@@ -1365,49 +1394,51 @@ export const TerminalPane: React.FC<Props> = ({
             termRef.current?.focus()
           }}
         >
-          <div ref={containerRef} className="terminal-container" />
+          <div className="terminal-pane-main__terminal">
+            <div ref={containerRef} className="terminal-container" />
 
-          {isScrolledUp && (
-            <TerminalScrollDown
-              onPointerDown={onTerminalChromePointerDown}
-              onClick={scrollTerminalToBottom}
-            />
-          )}
-
-          <SplitPaneButton
-            visible={!!onRequestSplitPane && shellOrToolbarFocused}
-            onPointerDown={onTerminalChromePointerDown}
-            onClick={() => {
-              onRequestPaneFocusRef.current?.()
-              onRequestSplitPane?.()
-              termRef.current?.focus()
-            }}
-          />
-        </div>
-
-        {(showCdSuggestPanel || showCmdSuggestPanel) && (
-          <div className="terminal-suggest-stack">
-            {showCdSuggestPanel && (
-              <CdSuggest
-                visibleLocalDirs={visibleLocalDirs}
-                visiblePaths={visiblePaths}
-                onPickLocal={handleCdLocalPick}
-                onPickRecent={handleCdPick}
+            {isScrolledUp && (
+              <TerminalScrollDown
+                onPointerDown={onTerminalChromePointerDown}
+                onClick={scrollTerminalToBottom}
               />
             )}
-            {showCmdSuggestPanel && (
-              <CmdSuggest
-                visibleRecentMatches={visibleRecentMatches}
-                visibleSnippets={visibleSnippets}
-                cmdSuggestCmd={cmdSuggestCmd}
-                cmdSuggestDraft={cmdSuggestDraft}
+
+            <SplitPaneButton
+              visible={!!onRequestSplitPane && shellOrToolbarFocused}
+              onPointerDown={onTerminalChromePointerDown}
+              onClick={() => {
+                onRequestPaneFocusRef.current?.()
+                onRequestSplitPane?.()
+                termRef.current?.focus()
+              }}
+            />
+          </div>
+
+          {(showCdSuggestPanel || showCmdSuggestPanel) && (
+            <div className="terminal-suggest-stack">
+              {showCdSuggestPanel && (
+                <CdSuggest
+                  visibleLocalDirs={visibleLocalDirs}
+                  visiblePaths={visiblePaths}
+                  onPickLocal={handleCdLocalPick}
+                  onPickRecent={handleCdPick}
+                />
+              )}
+              {showCmdSuggestPanel && (
+                <CmdSuggest
+                  visibleRecentMatches={visibleRecentMatches}
+                  visibleSnippets={visibleSnippets}
+                  cmdSuggestCmd={cmdSuggestCmd}
+                  cmdSuggestDraft={cmdSuggestDraft}
                 onPickRecent={handleRecentCmdPick}
                 onPickSnippet={handleCmdSnippetPick}
-                onClearHistory={handleClearCmdHistory}
               />
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
+
         {explorerOpen && (
           <FileExplorerSidebar
             ref={explorerRef}

@@ -8,9 +8,10 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "baseUrl": ".",
     "paths": {
       "@shared/*": ["src/shared/*"]
     }
   },
-  "include": ["electron/**/*.ts", "electron.vite.config.ts"]
+  "include": ["electron/**/*.ts", "src/shared/**/*.ts", "electron.vite.config.ts"]
 }

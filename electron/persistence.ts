@@ -1,7 +1,7 @@
 import { join } from 'path'
 import { readFileSync, writeFileSync, unlinkSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { app } from 'electron'
-import type { TabSession } from '../src/renderer/App'
+import type { TabSession } from '../src/shared/tabSession'
 import type { FileExplorerPersistedState } from '../src/shared/fileExplorerPersistedState'
 
 const USER_DATA = (): string => app.getPath('userData')

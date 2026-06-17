@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { afterAll, describe, expect, it } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createDirForExplorer, createFileForExplorer, listDirChildren } from '../fileExplorerOps'
@@ -39,5 +39,14 @@ describe('fileExplorerOps', () => {
     if (!result.ok) expect(result.code).toBe('FILE_EXISTS')
   })
 
-  rmSync(root, { recursive: true, force: true })
+  it('creates a new file under an existing directory', () => {
+    mkdirSync(join(root, 'landing'), { recursive: true })
+    const result = createFileForExplorer(root, 'landing/hola.ts')
+    expect(result.ok).toBe(true)
+    expect(existsSync(join(root, 'landing', 'hola.ts'))).toBe(true)
+  })
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
 })

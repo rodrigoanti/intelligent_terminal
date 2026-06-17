@@ -10,6 +10,7 @@ interface TabItemProps {
   tabNumber: number
   isActive: boolean
   isDragOver: boolean
+  dragOverPlace: 'before' | 'after' | null
   isBusy: boolean
   isEditing: boolean
   editDraft: string
@@ -24,8 +25,8 @@ interface TabItemProps {
   onDragOver: (e: React.DragEvent) => void
   onDrop: (e: React.DragEvent) => void
   onDragEnd: () => void
-  onDragLeave: () => void
-  skipBlurCommitRef: React.RefObject<boolean>
+  onDragLeave: (e: React.DragEvent) => void
+  skipBlurCommitRef: React.MutableRefObject<boolean>
 }
 
 export const TabItem: React.FC<TabItemProps> = ({
@@ -33,6 +34,7 @@ export const TabItem: React.FC<TabItemProps> = ({
   tabNumber,
   isActive,
   isDragOver,
+  dragOverPlace,
   isBusy,
   isEditing,
   editDraft,
@@ -66,7 +68,8 @@ export const TabItem: React.FC<TabItemProps> = ({
       className={[
         'tab',
         isActive ? 'tab--active' : '',
-        isDragOver ? 'tab--drag-over' : '',
+        isDragOver && dragOverPlace === 'before' ? 'tab--drag-over-before' : '',
+        isDragOver && dragOverPlace === 'after' ? 'tab--drag-over-after' : '',
       ].filter(Boolean).join(' ')}
       draggable={!isEditing}
       onDragStart={onDragStart}

@@ -18,5 +18,11 @@
       "@i18n/*": ["src/i18n/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "electron/preload.ts",
+    "electron/persistence.ts",
+    "electron/spotifyNative.ts"
+  ]
 }

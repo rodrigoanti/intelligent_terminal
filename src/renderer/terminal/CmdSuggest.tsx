@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Icon } from '../components/ui/Icon'
 import { useT } from '@i18n/useT'
 
@@ -11,6 +11,48 @@ interface CmdSuggestHighlightParts {
   before: string
   match: string
   after: string
+}
+
+interface UnifiedCmdItem {
+  key: string
+  display: string
+  pickValue: string
+  source: 'snippet' | 'recent'
+}
+
+function normCmd(cmd: string): string {
+  return cmd.trim().toLowerCase()
+}
+
+function mergeCmdSuggestItems(recent: string[], snippets: CmdSnippet[]): UnifiedCmdItem[] {
+  const seen = new Set<string>()
+  const out: UnifiedCmdItem[] = []
+
+  for (const s of snippets) {
+    const n = normCmd(s.cmd)
+    if (!n || seen.has(n)) continue
+    seen.add(n)
+    out.push({
+      key: `snippet:${s.cmd}`,
+      display: s.label,
+      pickValue: s.cmd,
+      source: 'snippet',
+    })
+  }
+
+  for (const cmd of recent) {
+    const n = normCmd(cmd)
+    if (!n || seen.has(n)) continue
+    seen.add(n)
+    out.push({
+      key: `recent:${cmd}`,
+      display: cmd,
+      pickValue: cmd,
+      source: 'recent',
+    })
+  }
+
+  return out
 }
 
 function splitHighlight(display: string, draft: string): CmdSuggestHighlightParts | null {
@@ -54,7 +96,6 @@ interface CmdSuggestProps {
   cmdSuggestDraft: string
   onPickRecent: (cmd: string) => void
   onPickSnippet: (cmd: string) => void
-  onClearHistory: () => void
 }
 
 export const CmdSuggest: React.FC<CmdSuggestProps> = ({
@@ -64,9 +105,13 @@ export const CmdSuggest: React.FC<CmdSuggestProps> = ({
   cmdSuggestDraft,
   onPickRecent,
   onPickSnippet,
-  onClearHistory,
 }) => {
   const { t } = useT()
+
+  const items = useMemo(
+    () => mergeCmdSuggestItems(visibleRecentMatches, visibleSnippets),
+    [visibleRecentMatches, visibleSnippets],
+  )
 
   const label =
     visibleRecentMatches.length > 0 && visibleSnippets.length > 0
@@ -77,46 +122,24 @@ export const CmdSuggest: React.FC<CmdSuggestProps> = ({
           ? t('cmdSuggest.ariaSuggestions', { cmd: cmdSuggestCmd })
           : t('cmdSuggest.ariaOnlySuggestions')
 
+  if (items.length === 0) return null
+
   return (
     <div className="cmd-suggest" role="listbox" aria-label={label}>
-      {visibleRecentMatches.length > 0 && (
-        <div className={['cmd-suggest-recent-block', visibleSnippets.length > 0 ? 'cmd-suggest-recent-block--sep' : ''].filter(Boolean).join(' ')}>
-          <div className="cmd-suggest-section-header">
-            <div className="cmd-suggest-section-title cmd-suggest-section-title--in-header">{t('cmdSuggest.recentsTitle')}</div>
-            <button
-              type="button"
-              className="cmd-suggest-clear-history-btn"
-              title={t('cmdSuggest.clearHistoryTitle')}
-              onMouseDown={e => { e.preventDefault(); onClearHistory() }}
-            >
-              {t('cmdSuggest.clearHistory')}
-            </button>
-          </div>
-          {visibleRecentMatches.map(cmd => (
-            <CmdSuggestItem
-              key={`recent:${cmd}`}
-              display={cmd}
-              draft={cmdSuggestDraft}
-              itemTitle={t('cmdSuggest.itemTitle')}
-              onPick={() => onPickRecent(cmd)}
-            />
-          ))}
-        </div>
-      )}
-      {visibleSnippets.length > 0 && (
-        <div className="cmd-suggest-static-block">
-          <div className="cmd-suggest-section-title">{cmdSuggestCmd}</div>
-          {visibleSnippets.map(s => (
-            <CmdSuggestItem
-              key={s.cmd}
-              display={s.label}
-              draft={cmdSuggestDraft}
-              itemTitle={t('cmdSuggest.itemTitle')}
-              onPick={() => onPickSnippet(s.cmd)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="cmd-suggest-list">
+        {items.map(item => (
+          <CmdSuggestItem
+            key={item.key}
+            display={item.display}
+            draft={cmdSuggestDraft}
+            itemTitle={t('cmdSuggest.itemTitle')}
+            onPick={() => {
+              if (item.source === 'snippet') onPickSnippet(item.pickValue)
+              else onPickRecent(item.pickValue)
+            }}
+          />
+        ))}
+      </div>
     </div>
   )
 }

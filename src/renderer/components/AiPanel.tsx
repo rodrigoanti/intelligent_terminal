@@ -95,7 +95,7 @@ export const AiPanel: React.FC<Props> = ({
   const messagesRef = useRef(messages)
   const [loopActive, setLoopActive] = useState(false)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const prevExpandedRef = useRef<boolean | null>(null)
   const chatSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const getTerminalContextRef = useRef(getTerminalContext)
@@ -514,7 +514,7 @@ export const AiPanel: React.FC<Props> = ({
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
     if (e.key === 'Enter') { e.preventDefault(); void handleSend() }
   }
 
