@@ -15,6 +15,7 @@ import {
   ipcMain,
   shell,
 } from 'electron'
+import { config as loadDotenv } from 'dotenv'
 import * as pty from 'node-pty'
 import { IPC } from '@shared/ipcChannels'
 import type { AppConfig } from '@shared/configSchema'
@@ -53,6 +54,7 @@ import {
   gitUnstageFile,
 } from './gitSessionOps'
 import { githubActionsListForSession } from './githubActionsOps'
+import { resolveGithubToken } from './githubToken'
 import {
   copyPathsForExplorer,
   cutPathsForExplorer,
@@ -78,6 +80,9 @@ import {
 import { readCdRecentFolders } from './cdRecentMd'
 
 const APP_DISPLAY_NAME = 'AI Terminal'
+
+loadDotenv({ path: resolve(process.cwd(), '.env') })
+loadDotenv({ path: resolve(process.cwd(), '.env.local'), override: true })
 import {
   clearPersistedSessionCwd,
   clearSessionCdState,
@@ -453,8 +458,9 @@ function registerIpc(): void {
     return result
   })
 
-  ipcMain.handle(IPC.GITHUB_ACTIONS_LIST, (_e, sessionId: string) => {
-    return githubActionsListForSession(projectRootForSession(sessionId))
+  ipcMain.handle(IPC.GITHUB_ACTIONS_LIST, async (_e, sessionId: string) => {
+    const token = await resolveGithubToken(readConfig())
+    return githubActionsListForSession(projectRootForSession(sessionId), token)
   })
 
   ipcMain.handle(

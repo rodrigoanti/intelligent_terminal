@@ -37,7 +37,7 @@ export const GitHubActionsPanel: React.FC<GitHubActionsPanelProps> = ({
         repo: null,
         runs: [],
         error: e instanceof Error ? e.message : String(e),
-        errorCode: 'gh_failed',
+        errorCode: 'api_failed',
       })
     } finally {
       setLoading(false)
@@ -85,21 +85,11 @@ export const GitHubActionsPanel: React.FC<GitHubActionsPanelProps> = ({
         {repoStatus?.isRepo && snapshot && !snapshot.ok && (
           <div className="gh-actions-panel__error" role="alert">
             <p>{snapshot.error ?? t('githubActions.loadFailed')}</p>
-            {snapshot.errorCode === 'gh_missing' && (
-              <p className="gh-actions-panel__error-hint">
-                {t('githubActions.ghMissingHint')}{' '}
-                <button
-                  type="button"
-                  className="gh-actions-panel__link"
-                  onClick={() => void openUrl('https://cli.github.com/')}
-                >
-                  {t('githubActions.ghMissingLink')}
-                </button>
-                .
-              </p>
+            {snapshot.errorCode === 'token_missing' && (
+              <p className="gh-actions-panel__error-hint">{t('githubActions.tokenMissingHint')}</p>
             )}
-            {snapshot.errorCode === 'gh_not_authed' && (
-              <p className="gh-actions-panel__error-hint">{t('githubActions.ghNotAuthedHint')}</p>
+            {snapshot.errorCode === 'token_invalid' && (
+              <p className="gh-actions-panel__error-hint">{t('githubActions.tokenInvalidHint')}</p>
             )}
             {snapshot.errorCode === 'not_github' && (
               <p className="gh-actions-panel__error-hint">{t('githubActions.notGithubHint')}</p>

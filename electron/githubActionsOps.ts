@@ -7,6 +7,7 @@ import type {
   GitHubActionsSnapshot,
   GitHubRepoRef,
 } from '../src/shared/githubActionsTypes'
+import { fetchWorkflowRuns, GitHubApiError } from './githubApi'
 
 const TIMEOUT_MS = 120_000
 const RUN_LIST_LIMIT = 15
@@ -121,24 +122,9 @@ function fail(
   return { ok: false, repo, runs: [], error, errorCode }
 }
 
-function mapGhRun(raw: Record<string, unknown>): GitHubActionsRun | null {
-  const id = typeof raw.databaseId === 'number' ? raw.databaseId : Number(raw.databaseId)
-  if (!Number.isFinite(id)) return null
-  return {
-    id,
-    title: String(raw.displayTitle ?? raw.title ?? 'Workflow run'),
-    status: String(raw.status ?? 'unknown'),
-    conclusion: raw.conclusion != null ? String(raw.conclusion) : null,
-    headBranch: String(raw.headBranch ?? ''),
-    event: String(raw.event ?? ''),
-    createdAt: String(raw.createdAt ?? ''),
-    updatedAt: String(raw.updatedAt ?? ''),
-    url: String(raw.url ?? ''),
-  }
-}
-
 export async function githubActionsListForSession(
   sessionCwdRaw: string,
+  githubToken: string | null,
 ): Promise<GitHubActionsSnapshot> {
   const sessionCwd = resolveWorkingDir(sessionCwdRaw)
   if (!sessionCwd) {
@@ -155,65 +141,32 @@ export async function githubActionsListForSession(
     return fail('not_github', 'El remote origin no apunta a un repositorio de GitHub.')
   }
 
-  const versionCheck = await spawnCapture('gh', ['--version'], { timeoutMs: 8_000 })
-  if (versionCheck.exitCode !== 0) {
+  const token = githubToken?.trim()
+  if (!token) {
     return fail(
-      'gh_missing',
-      'GitHub CLI (gh) no está instalado o no está en el PATH.',
+      'token_missing',
+      'Configura un token de GitHub en Ajustes o define GITHUB_TOKEN en el entorno.',
       repo,
     )
   }
 
-  const authCheck = await spawnCapture('gh', ['auth', 'status'], { timeoutMs: 15_000 })
-  if (authCheck.exitCode !== 0) {
-    const hint = authCheck.stderr.trim() || authCheck.stdout.trim()
-    return fail(
-      'gh_not_authed',
-      hint
-        ? `gh no está autenticado: ${hint}`
-        : 'Ejecuta «gh auth login» para ver los workflow runs.',
-      repo,
-    )
-  }
-
-  const list = await spawnCapture(
-    'gh',
-    [
-      'run',
-      'list',
-      '--repo',
-      repo.fullName,
-      '--limit',
-      String(RUN_LIST_LIMIT),
-      '--json',
-      'databaseId,displayTitle,status,conclusion,headBranch,event,createdAt,updatedAt,url',
-    ],
-    { timeoutMs: TIMEOUT_MS },
-  )
-
-  if (list.exitCode !== 0) {
-    const msg = list.stderr.trim() || list.stdout.trim() || 'Error al listar runs'
-    return fail('gh_failed', msg, repo)
-  }
-
-  let parsed: unknown
   try {
-    parsed = JSON.parse(list.stdout.trim() || '[]')
-  } catch {
-    return fail('gh_failed', 'Respuesta JSON inválida de gh run list', repo)
-  }
-
-  if (!Array.isArray(parsed)) {
-    return fail('gh_failed', 'Respuesta inesperada de gh run list', repo)
-  }
-
-  const runs: GitHubActionsRun[] = []
-  for (const item of parsed) {
-    if (item && typeof item === 'object') {
-      const mapped = mapGhRun(item as Record<string, unknown>)
-      if (mapped) runs.push(mapped)
+    const runs: GitHubActionsRun[] = await fetchWorkflowRuns(token, repo.fullName, RUN_LIST_LIMIT)
+    return { ok: true, repo, runs }
+  } catch (error) {
+    if (error instanceof GitHubApiError) {
+      if (error.status === 401) {
+        return fail('token_invalid', 'Token de GitHub inválido o revocado.', repo)
+      }
+      if (error.status === 403) {
+        return fail('api_failed', error.message, repo)
+      }
+      if (error.status === 404) {
+        return { ok: true, repo, runs: [] }
+      }
+      return fail('api_failed', error.message, repo)
     }
+    const msg = error instanceof Error ? error.message : String(error)
+    return fail('api_failed', msg, repo)
   }
-
-  return { ok: true, repo, runs }
 }

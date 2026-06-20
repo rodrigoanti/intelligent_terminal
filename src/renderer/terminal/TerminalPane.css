@@ -63,7 +63,7 @@
   box-shadow:
     0 -3px 10px color-mix(in srgb, black 18%, transparent),
     0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent),
-    0 -10px 24px var(--accent-glow-soft);
+    0 -10px 24px color-mix(in srgb, var(--accent-glow-soft) 50%, transparent);
 }
 
 .terminal-pane-ai-dock--expanded {
@@ -78,7 +78,7 @@
   box-shadow:
     0 -3px 10px color-mix(in srgb, black 18%, transparent),
     0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent),
-    0 -10px 24px var(--accent-glow-soft);
+    0 -10px 24px color-mix(in srgb, var(--accent-glow-soft) 50%, transparent);
 }
 
 :root[data-theme-category='glow'] .terminal-pane-ai-dock {
@@ -86,8 +86,8 @@
 }
 
 :root[data-theme-category='glow'] .terminal-pane-ai-dock::before {
-  opacity: 0.78;
-  box-shadow: 0 0 10px var(--accent-glow-soft);
+  opacity: 0.39;
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accent-glow-soft) 50%, transparent);
 }
 
 :root[data-theme-category='glow'] .terminal-pane-ai-dock:hover,
@@ -97,7 +97,7 @@
 
 :root[data-theme-category='glow'] .terminal-pane-ai-dock:hover::before,
 :root[data-theme-category='glow'] .terminal-pane-ai-dock:focus-within::before {
-  opacity: 0.78;
+  opacity: 0.39;
 }
 
 :root[data-theme-category='glow'] .terminal-pane-ai-dock--collapsed:hover,
@@ -107,7 +107,7 @@
   box-shadow:
     0 -3px 10px color-mix(in srgb, black 18%, transparent),
     0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent),
-    0 -10px 24px var(--accent-glow-soft);
+    0 -10px 24px color-mix(in srgb, var(--accent-glow-soft) 50%, transparent);
 }
 
 .terminal-pane--inactive-pane .terminal-pane-main,

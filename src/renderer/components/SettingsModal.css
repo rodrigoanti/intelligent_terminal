@@ -60,6 +60,22 @@
   line-height: 1.6;
 }
 
+.settings-inline-link {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-inline-link:hover {
+  opacity: 0.88;
+}
+
 .settings-errors {
   background: color-mix(in srgb, var(--danger) 10%, var(--bg-secondary));
   border: 1px solid color-mix(in srgb, var(--danger) 25%, var(--border));

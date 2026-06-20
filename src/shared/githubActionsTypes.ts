@@ -1,9 +1,9 @@
 export type GitHubActionsErrorCode =
   | 'not_repo'
   | 'not_github'
-  | 'gh_missing'
-  | 'gh_not_authed'
-  | 'gh_failed'
+  | 'token_missing'
+  | 'token_invalid'
+  | 'api_failed'
   | 'invalid_cwd'
 
 export interface GitHubRepoRef {

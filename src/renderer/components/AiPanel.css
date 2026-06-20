@@ -88,7 +88,7 @@
   left: 0;
   width: 3px;
   background: linear-gradient(180deg, transparent 0%, var(--accent) 18%, color-mix(in srgb, white 18%, var(--accent)) 50%, var(--accent) 70%, transparent 100%);
-  box-shadow: 0 0 5px color-mix(in srgb, var(--accent-glow-soft) 55%, transparent);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--accent-glow-soft) 28%, transparent);
 }
 
 :root[data-theme-category='glow'] .ai-panel-header::after {
@@ -102,12 +102,14 @@
   background-size: 220% 100%;
   background-repeat: no-repeat;
   background-position: -180% 0;
-  box-shadow: 0 0 5px color-mix(in srgb, var(--accent-glow-soft) 55%, transparent);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--accent-glow-soft) 28%, transparent);
 }
 
 :root[data-theme-category='glow'] .ai-panel-header {
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--accent) 4%, var(--ai-panel-base)) 0%, color-mix(in srgb, var(--surface) 24%, var(--ai-panel-base)) 100%);
+  border-left: 0;
+  padding-left: 12px;
   border-bottom-color: color-mix(in srgb, var(--accent) 18%, var(--border));
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
 }
@@ -122,13 +124,13 @@
 :root[data-theme-category='glow'] .ai-panel-title,
 :root[data-theme-category='glow'] .ai-panel-name,
 :root[data-theme-category='glow'] .ai-panel-prompt {
-  text-shadow: 0 0 4px color-mix(in srgb, var(--accent-glow-soft) 45%, transparent);
+  text-shadow: 0 0 2px color-mix(in srgb, var(--accent-glow-soft) 22%, transparent);
 }
 
 :root[data-theme-category='glow'] .ai-model-badge {
   border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
   background: color-mix(in srgb, var(--accent) 7%, var(--surface));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent), 0 0 7px color-mix(in srgb, var(--accent-glow-soft) 45%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent), 0 0 4px color-mix(in srgb, var(--accent-glow-soft) 22%, transparent);
 }
 
 .ai-panel-header-main {

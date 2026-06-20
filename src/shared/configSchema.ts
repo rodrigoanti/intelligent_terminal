@@ -46,6 +46,8 @@ export interface AppConfig {
   anthropicApiKey: string
   /** API key de OpenAI (gpt-*, o*). Solo se usa cuando aiProvider === 'openai'. */
   openaiApiKey: string
+  /** Personal Access Token de GitHub para Actions y API. Alternativa: GITHUB_TOKEN en .env. */
+  githubToken: string
   defaultModel: string
   maxContextLines: number
   themeId: string
@@ -91,6 +93,7 @@ export const CONFIG_DEFAULTS: AppConfig = {
   ollamaBaseURL: 'http://127.0.0.1:11434',
   anthropicApiKey: '',
   openaiApiKey: '',
+  githubToken: '',
   defaultModel: 'llama3.2',
   maxContextLines: 200,
   themeId: 'vscodeDark',

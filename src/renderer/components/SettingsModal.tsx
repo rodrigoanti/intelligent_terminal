@@ -33,6 +33,7 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     ollamaBaseURL: config.ollamaBaseURL,
     anthropicApiKey: config.anthropicApiKey,
     openaiApiKey: config.openaiApiKey,
+    githubToken: config.githubToken,
     defaultModel: config.defaultModel,
     maxContextLines: String(config.maxContextLines),
     language: config.language,
@@ -47,6 +48,7 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       ollamaBaseURL: config.ollamaBaseURL,
       anthropicApiKey: config.anthropicApiKey,
       openaiApiKey: config.openaiApiKey,
+      githubToken: config.githubToken,
       defaultModel: config.defaultModel,
       maxContextLines: String(config.maxContextLines),
       language: config.language,
@@ -91,6 +93,7 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       ollamaBaseURL: form.ollamaBaseURL.trim(),
       anthropicApiKey: form.anthropicApiKey.trim(),
       openaiApiKey: form.openaiApiKey.trim(),
+      githubToken: form.githubToken.trim(),
       defaultModel: form.defaultModel.trim(),
       maxContextLines: Number(form.maxContextLines),
       language: form.language,
@@ -187,6 +190,33 @@ export const SettingsModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         </SettingsField>
 
         <p className="settings-hint settings-hint--block">{t('settings.agentHint')}</p>
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.githubSection')}>
+        <SettingsField
+          label={t('settings.githubTokenLabel')}
+          hint={
+            <>
+              {t('settings.githubTokenHint')}{' '}
+              <button
+                type="button"
+                className="settings-inline-link"
+                onClick={() => void window.api.openExternalUrl('https://github.com/settings/tokens')}
+              >
+                github.com/settings/tokens
+              </button>
+            </>
+          }
+        >
+          <Input
+            type="password"
+            value={form.githubToken}
+            onChange={e => update('githubToken', e.target.value)}
+            placeholder={t('settings.githubTokenPlaceholder')}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </SettingsField>
       </SettingsSection>
 
       <SettingsSection title={t('settings.languageSection')}>
