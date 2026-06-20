@@ -291,12 +291,15 @@ export const App: React.FC = () => {
   useEffect(() => {
     const tab = tabs.find(t => t.id === activeTabId)
     if (!tab) return
+
     const raf = requestAnimationFrame(() => {
       for (const paneId of tab.paneIds) {
         termRefs.current.get(paneId)?.refit?.()
       }
     })
-    return () => cancelAnimationFrame(raf)
+    return () => {
+      cancelAnimationFrame(raf)
+    }
   }, [activeTabId, tabs])
 
   // Manejar APP_SAVE_BEFORE_CLOSE: serializar scrollbacks, actualizar cwds y responder

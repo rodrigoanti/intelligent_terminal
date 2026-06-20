@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { getTheme, getThemesForPicker } from '@themes/presets'
+import { getTheme, getThemeChromeProfile, getThemesForPicker } from '@themes/presets'
 import { useT } from '@i18n/useT'
 import { TerminalModal } from './TerminalModal'
 import { ThemePreview } from './ThemePreview'
@@ -34,10 +34,14 @@ export const ThemePickerModal: React.FC<Props> = ({
     [pickerThemes, filter],
   )
 
-  const firstLightInFiltered = useMemo(
-    () => filteredThemes.findIndex(theme => theme.appearance === 'light'),
-    [filteredThemes],
-  )
+  const groupedThemes = useMemo(() => {
+    const glow = filteredThemes.filter(theme => getThemeChromeProfile(theme).category === 'glow')
+    const regular = filteredThemes.filter(theme => getThemeChromeProfile(theme).category === 'regular')
+    return [
+      { key: 'glow', title: 'Glow / cinematic', themes: glow },
+      { key: 'regular', title: 'Regular / clean', themes: regular },
+    ].filter(group => group.themes.length > 0)
+  }, [filteredThemes])
 
   const [focusedId, setFocusedId] = useState(currentThemeId)
 
@@ -124,21 +128,21 @@ export const ThemePickerModal: React.FC<Props> = ({
                 {t('themePicker.emptyState', { filter: filter.trim() })}
               </div>
             )}
-            {filteredThemes.map((theme, i) => {
-              const showSep = firstLightInFiltered > 0 && i === firstLightInFiltered
-              return (
-                <React.Fragment key={theme.id}>
-                  {showSep && <div className="theme-picker-grid-break" aria-hidden="true" />}
+            {groupedThemes.map(group => (
+              <React.Fragment key={group.key}>
+                <div className="theme-picker-grid-section-title">{group.title}</div>
+                {group.themes.map(theme => (
                   <ThemeChip
+                    key={theme.id}
                     theme={theme}
                     isActive={theme.id === currentThemeId}
                     isFocused={theme.id === focusedId}
                     onSelect={() => applyThemeId(theme.id)}
                     onHover={() => setFocusedId(theme.id)}
                   />
-                </React.Fragment>
-              )
-            })}
+                ))}
+              </React.Fragment>
+            ))}
           </div>
         </div>
       </div>

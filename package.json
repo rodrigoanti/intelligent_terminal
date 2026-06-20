@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:mac-icon": "bash scripts/generate-mac-icon.sh",
     "preview": "electron-vite preview",
-    "dist": "electron-vite build && electron-builder --mac dir",
+    "dist": "rm -rf dist && npm run build:mac-icon && npm run build && electron-builder --mac dmg --arm64",
+    "dist:dir": "rm -rf dist && npm run build:mac-icon && npm run build && electron-builder --mac dir --arm64",
     "test": "vitest run",
     "test:watch": "vitest",
     "rebuild:native": "electron-rebuild -f -w node-pty",
@@ -61,24 +63,26 @@
     },
     "icon": "build/icon.png",
     "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
       "target": [
         {
-          "target": "dir",
+          "target": "dmg",
           "arch": [
             "arm64"
-          ]
-        },
-        {
-          "target": "dir",
-          "arch": [
-            "x64"
           ]
         }
       ]
     },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
     "files": [
       "out/**/*",
       "README.md"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
     ],
     "nativeRebuilder": "sequential",
     "npmRebuild": true

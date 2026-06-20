@@ -4,7 +4,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top right, var(--accent-veil) 0%, transparent 24%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 80%, var(--bg)) 0%, var(--bg) 100%);
   position: relative;
   --pane-toolbar-reserve: 0px;
 }
@@ -41,6 +43,18 @@
   isolation: isolate;
 }
 
+.terminal-pane-ai-dock::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 24%, color-mix(in srgb, white 30%, var(--accent)) 50%, var(--accent) 76%, transparent 100%);
+}
+
 .terminal-pane-ai-dock--collapsed {
   top: auto;
   height: auto;
@@ -48,7 +62,8 @@
   border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
   box-shadow:
     0 -3px 10px color-mix(in srgb, black 18%, transparent),
-    0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent);
+    0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent),
+    0 -10px 24px var(--accent-glow-soft);
 }
 
 .terminal-pane-ai-dock--expanded {
@@ -58,11 +73,41 @@
   height: auto;
   max-height: none;
   min-height: 0;
-  border-radius: var(--radius, 8px) var(--radius, 8px) 0 0;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+  border-radius: var(--panel-radius, var(--radius, 8px)) var(--panel-radius, var(--radius, 8px)) 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
   box-shadow:
-    0 -1px 0 color-mix(in srgb, var(--border) 50%, transparent),
-    0 -6px 16px color-mix(in srgb, black 22%, transparent);
+    0 -3px 10px color-mix(in srgb, black 18%, transparent),
+    0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent),
+    0 -10px 24px var(--accent-glow-soft);
+}
+
+:root[data-theme-category='glow'] .terminal-pane-ai-dock {
+  border-top-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+}
+
+:root[data-theme-category='glow'] .terminal-pane-ai-dock::before {
+  opacity: 0.78;
+  box-shadow: 0 0 10px var(--accent-glow-soft);
+}
+
+:root[data-theme-category='glow'] .terminal-pane-ai-dock:hover,
+:root[data-theme-category='glow'] .terminal-pane-ai-dock:focus-within {
+  border-top-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+}
+
+:root[data-theme-category='glow'] .terminal-pane-ai-dock:hover::before,
+:root[data-theme-category='glow'] .terminal-pane-ai-dock:focus-within::before {
+  opacity: 0.78;
+}
+
+:root[data-theme-category='glow'] .terminal-pane-ai-dock--collapsed:hover,
+:root[data-theme-category='glow'] .terminal-pane-ai-dock--collapsed:focus-within,
+:root[data-theme-category='glow'] .terminal-pane-ai-dock--expanded:hover,
+:root[data-theme-category='glow'] .terminal-pane-ai-dock--expanded:focus-within {
+  box-shadow:
+    0 -3px 10px color-mix(in srgb, black 18%, transparent),
+    0 -1px 0 color-mix(in srgb, var(--border) 55%, transparent),
+    0 -10px 24px var(--accent-glow-soft);
 }
 
 .terminal-pane--inactive-pane .terminal-pane-main,
@@ -86,10 +131,11 @@
   min-height: 36px;
   padding: 5px 8px 6px;
   pointer-events: auto;
-  background: color-mix(in srgb, var(--bg) 52%, transparent);
+  background: color-mix(in srgb, var(--bg) 58%, transparent);
   -webkit-backdrop-filter: blur(14px) saturate(1.12);
   backdrop-filter: blur(14px) saturate(1.12);
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 42%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 14%, transparent);
+  box-shadow: none;
   border-radius: 0;
   /* Siempre aspecto «sin foco» (antes solo en .terminal-pane--inactive-pane) */
   opacity: 0.72;
@@ -151,15 +197,17 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--bg) 55%, transparent);
   color: color-mix(in srgb, var(--text-muted) 88%, var(--text));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
   opacity: 0.88;
   cursor: pointer;
-  transition: color 0.1s ease, opacity 0.1s ease, background 0.1s ease, border-color 0.1s ease;
+  transition: color 0.1s ease, opacity 0.1s ease, background 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
 }
 
 .terminal-chrome-btn:hover {
   opacity: 1;
   background: color-mix(in srgb, var(--surface) 35%, transparent);
-  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  border-color: color-mix(in srgb, var(--border) 70%, var(--accent-border-soft));
+  box-shadow: 0 0 0 1px var(--accent-border-soft), 0 8px 18px var(--accent-glow-soft);
   color: var(--text);
 }
 
@@ -219,6 +267,7 @@
   display: flex;
   flex-direction: column;
   padding: 10px;
+  background: var(--bg);
   /* La barra del panel es absolute; reservar su altura para no tapar la 1ª línea */
   padding-top: calc(10px + var(--pane-toolbar-reserve));
   overflow: hidden;
@@ -232,6 +281,7 @@
   display: flex;
   flex-direction: column;
   padding-right: 10px;
+  background: var(--bg);
 }
 
 /* Área del xterm */
@@ -240,6 +290,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: var(--bg);
   /* Reserva del overlay IA + un poco de aire sobre la barra colapsada */
   padding-bottom: calc(var(--terminal-ai-dock-reserve, 0px) + var(--terminal-above-dock-gap));
 }
@@ -257,6 +308,9 @@
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
+  border: none;
+  border-radius: calc(var(--panel-radius) * 0.75);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
   /* Aísla composición del canvas xterm respecto al resto del chrome (Electron/macOS). */
   isolation: isolate;
 }

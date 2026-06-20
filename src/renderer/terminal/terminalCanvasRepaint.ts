@@ -1,11 +1,18 @@
 import type { Terminal } from '@xterm/xterm'
-import { isProgrammaticScroll, shouldStickTerminalToBottom, type TerminalFollowState } from './terminalFollowScroll'
-import { syncTerminalViewport } from './terminalWheelScroll'
 
 type TerminalWithAtlas = Terminal & { clearTextureAtlas?: () => void }
+type TerminalWithCore = Terminal & { _core?: { viewport?: { syncScrollArea: (immediate?: boolean) => void } } }
+
+function syncTerminalViewport(term: Terminal): void {
+  try {
+    const viewport = (term as TerminalWithCore)._core?.viewport
+    viewport?.syncScrollArea(true)
+  } catch {
+    /* dispose / dimensions */
+  }
+}
 
 export interface RepaintTerminalCanvasOptions {
-  /** Evita `syncScrollArea` mientras el follow programático aún alinea buffer y DOM. */
   skipViewportSync?: boolean
   /** Omite `clearTextureAtlas` (re-rasteriza todos los glifos: caro por chunk PTY). */
   skipTextureAtlas?: boolean
@@ -31,35 +38,6 @@ export function repaintTerminalCanvas(
   }
 }
 
-/** Repinta sin `syncScrollArea` cuando el usuario sigue la salida (evita saltos de scroll). */
-export function repaintTerminalCanvasForFollowState(
-  term: Terminal | null | undefined,
-  followState?: TerminalFollowState,
-): void {
-  if (!term || !followState) {
-    repaintTerminalCanvas(term)
-    return
-  }
-  let skipViewportSync = false
-  try {
-    skipViewportSync = shouldStickTerminalToBottom(term, followState)
-  } catch {
-    /* buffer / dispose */
-  }
-  repaintTerminalCanvas(term, { skipViewportSync })
-}
-
-function shouldSkipViewportSyncOnRepaint(
-  term: Terminal | null,
-  followState: TerminalFollowState | undefined,
-): boolean {
-  return Boolean(
-    term &&
-    followState &&
-    (isProgrammaticScroll() || shouldStickTerminalToBottom(term, followState)),
-  )
-}
-
 export interface TerminalRepaintScheduler {
   /** Repintado inmediato en el próximo frame (fit, cambio de tema, tab visible). */
   schedule: () => void
@@ -77,7 +55,6 @@ const ATLAS_CLEAR_MIN_INTERVAL_MS = 500
 
 export function createTerminalRepaintScheduler(
   getTerm: () => Terminal | null,
-  getFollowState?: () => TerminalFollowState | undefined,
 ): TerminalRepaintScheduler {
   let raf = 0
   let afterWriteRaf = 0
@@ -85,16 +62,12 @@ export function createTerminalRepaintScheduler(
 
   const runRepaint = (afterWrite: boolean): void => {
     const term = getTerm()
-    const followState = getFollowState?.()
     const now = Date.now()
     const skipTextureAtlas = afterWrite && now - lastAtlasClearAt < ATLAS_CLEAR_MIN_INTERVAL_MS
     if (!skipTextureAtlas) lastAtlasClearAt = now
     repaintTerminalCanvas(term, {
-      // Post-write el scroll pertenece al follow del callback de `term.write` y
-      // al sync interno de xterm; un `syncScrollArea` aquí con el buffer aún
-      // retrasado tira del scrollTop hacia arriba y oscila contra el follow
-      // (salto arriba/abajo por frame al streamear un agente).
-      skipViewportSync: afterWrite || shouldSkipViewportSyncOnRepaint(term, followState),
+      // Tras term.write dejamos que xterm termine su propio sync de scroll.
+      skipViewportSync: afterWrite,
       skipTextureAtlas,
     })
   }

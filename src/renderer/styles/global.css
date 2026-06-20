@@ -15,11 +15,20 @@
   --accent-dim: #4a3fbe;
   /** Texto sobre fondo `--accent` (p. ej. botón primario); lo recalcula `applyTheme()`. */
   --accent-fg: #f7f7fc;
+  --accent-rgb: 124 106 247;
+  --accent-veil: rgba(124, 106, 247, 0.08);
+  --accent-veil-strong: rgba(124, 106, 247, 0.14);
+  --accent-glow-soft: rgba(124, 106, 247, 0.12);
+  --accent-glow: rgba(124, 106, 247, 0.18);
+  --accent-glow-strong: rgba(124, 106, 247, 0.3);
+  --accent-border-soft: rgba(124, 106, 247, 0.24);
+  --accent-border-strong: rgba(124, 106, 247, 0.52);
   --danger: #f87171;
   --tab-active-bg: #1a1a28;
   --tab-inactive-bg: #0d0d14;
   --scrollbar: #2a2a42;
   --radius: 8px;
+  --panel-radius: 8px;
 
   /* Fixed layout measures */
   --titlebar-height: 36px;

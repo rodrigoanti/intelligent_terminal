@@ -7,6 +7,9 @@ export type { ButtonProps, ButtonVariant, ButtonSize } from './Button'
 export { Toggle } from './Toggle'
 export type { ToggleProps } from './Toggle'
 
+export { Tooltip } from './Tooltip'
+export type { TooltipProps } from './Tooltip'
+
 export { Badge } from './Badge'
 export type { BadgeProps, BadgeVariant } from './Badge'
 

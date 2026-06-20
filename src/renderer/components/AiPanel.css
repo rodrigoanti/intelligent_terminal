@@ -6,7 +6,7 @@
   --ai-panel-base: color-mix(in srgb, black 4%, var(--bg));
   --ai-edge: var(--border);
   --ai-pad-x: 8px;
-  --ai-pad-y: 6px;
+  --ai-pad-y: 0;
   --ai-bubble-r: var(--radius, 8px);
 
   /* Solo la cabecera y el cuerpo expandido capturan eventos; el resto deja pasar la rueda a xterm. */
@@ -46,26 +46,6 @@
   overflow: hidden;
 }
 
-/* Entrada rápida del área de chat al expandir el dock */
-.terminal-pane-ai-dock--expanded .ai-panel-expanded-body {
-  animation: ai-panel-expanded-body-in 0.18s ease both;
-}
-
-/*
- * Solo opacity — sin transform.
- * transform crea una nueva capa GPU sobre el canvas xterm; en Electron/macOS eso
- * puede dejar el canvas en negro durante o tras la animación (KNOWN_ISSUES.md §1).
- */
-@keyframes ai-panel-expanded-body-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .terminal-pane-ai-dock--expanded .ai-panel-expanded-body {
-    animation: none;
-  }
-}
 
 .ai-panel-header,
 .ai-panel-expanded-body {
@@ -74,14 +54,17 @@
 
 .ai-panel-header {
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
   font-family: var(--font-ui);
   color: var(--text-muted);
   font-size: 0.875rem;
   letter-spacing: 0.02em;
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
   border-left: 3px solid var(--accent);
-  background: color-mix(in srgb, var(--surface) 26%, var(--ai-panel-base));
-  padding: 8px 12px 9px 9px;
+  background: color-mix(in srgb, var(--surface) 18%, var(--ai-panel-base));
+  padding: 0 12px 0 9px;
 }
 
 .ai-panel-header--toggle {
@@ -90,7 +73,62 @@
 }
 
 .ai-panel-header--toggle:hover {
-  background: color-mix(in srgb, var(--surface) 38%, var(--ai-panel-base));
+  background: color-mix(in srgb, var(--surface) 26%, var(--ai-panel-base));
+}
+
+:root[data-theme-category='glow'] .ai-panel {
+  --ai-panel-base: color-mix(in srgb, var(--bg) 92%, black 8%);
+}
+
+:root[data-theme-category='glow'] .ai-panel-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: linear-gradient(180deg, transparent 0%, var(--accent) 18%, color-mix(in srgb, white 18%, var(--accent)) 50%, var(--accent) 70%, transparent 100%);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accent-glow-soft) 55%, transparent);
+}
+
+:root[data-theme-category='glow'] .ai-panel-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 18%, color-mix(in srgb, white 18%, var(--accent)) 50%, var(--accent) 68%, transparent 100%);
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  background-position: -180% 0;
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accent-glow-soft) 55%, transparent);
+}
+
+:root[data-theme-category='glow'] .ai-panel-header {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 4%, var(--ai-panel-base)) 0%, color-mix(in srgb, var(--surface) 24%, var(--ai-panel-base)) 100%);
+  border-bottom-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
+}
+
+:root[data-theme-category='glow'] .ai-panel-header--toggle:hover,
+:root[data-theme-category='glow'] .terminal-pane-ai-dock:focus-within .ai-panel-header {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 5%, var(--ai-panel-base)) 0%, color-mix(in srgb, var(--surface) 28%, var(--ai-panel-base)) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
+}
+
+:root[data-theme-category='glow'] .ai-panel-title,
+:root[data-theme-category='glow'] .ai-panel-name,
+:root[data-theme-category='glow'] .ai-panel-prompt {
+  text-shadow: 0 0 4px color-mix(in srgb, var(--accent-glow-soft) 45%, transparent);
+}
+
+:root[data-theme-category='glow'] .ai-model-badge {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent), 0 0 7px color-mix(in srgb, var(--accent-glow-soft) 45%, transparent);
 }
 
 .ai-panel-header-main {
@@ -102,10 +140,11 @@
 
 .ai-panel-header-top {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .ai-panel-title {
@@ -149,54 +188,20 @@
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 
-/* Colapsado: debe ir DESPUÉS de .ai-panel-header para no perder contra padding/borde base */
+/* Colapsado: conserva el mismo alto/cromo que expandido para evitar saltos visuales. */
 .ai-panel-header.ai-panel-header--compact-chrome {
-  padding: 5px 11px 5px 8px;
-  border-bottom: none;
-  border-left-width: 2px;
-  font-size: 0.88em;
-  letter-spacing: 0.02em;
   min-height: 0;
-}
-
-.ai-panel-header.ai-panel-header--compact-chrome .ai-panel-header-main {
-  gap: 0;
-}
-
-.ai-panel-header.ai-panel-header--compact-chrome .ai-panel-header-top {
-  align-items: center;
-}
-
-.ai-panel-header.ai-panel-header--compact-chrome .ai-panel-title {
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
-}
-
-.ai-panel-header.ai-panel-header--compact-chrome .ai-panel-prompt {
-  font-size: 1em;
-  line-height: 1;
-}
-
-.ai-panel-header.ai-panel-header--compact-chrome .ai-panel-name {
-  line-height: 1;
-  letter-spacing: 0.05em;
-}
-
-.ai-panel-header.ai-panel-header--compact-chrome .ai-model-badge {
-  padding: 1px 6px;
-  font-size: 0.78em;
-  line-height: 1.2;
-  max-width: min(38vw, 160px);
 }
 
 .ai-panel-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
   min-height: 28px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .ai-panel-actions__group {
@@ -212,41 +217,80 @@
   border-left: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
 }
 
-.ai-panel-actions__shell {
+.ai-shell-policy-badges {
   display: inline-flex;
   align-items: center;
-  height: 28px;
+  gap: 4px;
+  min-height: 20px;
+  flex-shrink: 0;
 }
 
-.ai-panel-actions__shell .select--sm {
-  height: 26px;
-  min-height: 26px;
-  padding: 4px 8px;
-  line-height: 1;
+.ai-shell-policy-badges--disabled {
+  opacity: 0.42;
+}
+
+.ai-shell-policy-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  background: color-mix(in srgb, var(--surface) 45%, transparent);
+  color: color-mix(in srgb, var(--text-muted) 88%, transparent);
+  cursor: pointer;
   box-sizing: border-box;
+  transition: color 0.12s, background 0.12s, border-color 0.12s, transform 0.12s;
+  flex-shrink: 0;
+}
+
+.ai-shell-policy-badge:hover:not(:disabled) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+}
+
+.ai-shell-policy-badge:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ai-shell-policy-badge:disabled {
+  cursor: not-allowed;
+}
+
+.ai-shell-policy-badge--active {
+  color: color-mix(in srgb, var(--accent) 18%, var(--text));
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.ai-shell-policy-badge--active:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--accent) 10%, var(--text));
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
 }
 
 .ai-panel-actions .toggle {
   height: 28px;
   padding: 0 4px;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .ai-panel-loop-stop {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 4px;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
   background: color-mix(in srgb, var(--danger) 10%, var(--surface));
   color: var(--danger);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: lowercase;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -256,9 +300,9 @@
   border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
 }
 
-.ai-panel-loop-stop__icon {
-  font-size: 0.65rem;
-  line-height: 1;
+.ai-panel-loop-stop .icon,
+.ai-panel-loop-stop svg {
+  display: block;
 }
 
 .ai-panel-shell-policy {
@@ -784,7 +828,7 @@
 /* ── Input del chat ─────────────────────────────────────────────────────── */
 .ai-input-area {
   flex-shrink: 0;
-  padding: 8px var(--ai-pad-x) 10px;
+  padding: 2px var(--ai-pad-x);
   border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
   background: color-mix(in srgb, var(--surface) 32%, var(--ai-panel-base));
 }

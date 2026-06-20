@@ -1,31 +1,42 @@
-import { useEffect, useRef, type RefObject } from 'react'
-import { scrollAiMessagesToBottom } from './aiMessagesScroll'
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
+import { isAiMessagesNearBottom, scrollAiMessagesToBottom } from './aiMessagesScroll'
 
 export interface AiMessagesFollowEntry {
   isStreaming?: boolean
 }
 
 /**
- * Mantiene el scroll del chat al fondo durante streaming y al terminar el turno.
- * `wasStreamingRef` fuerza un último scroll cuando `isStreaming` pasa a false.
+ * Mantiene el chat pegado al fondo sólo mientras el usuario siga en el fondo.
+ * La decisión se basa en la posición previa al update, no en el `scrollHeight`
+ * posterior; así evitamos perder el follow cuando llega más contenido.
  */
 export function useAiMessagesFollowScroll(
   messages: AiMessagesFollowEntry[],
   expanded: boolean,
   scrollRef: RefObject<HTMLDivElement | null>,
 ): void {
-  const wasStreamingRef = useRef(false)
+  const shouldFollowRef = useRef(true)
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const streaming = messages.some(m => m.isStreaming)
-    const force = streaming || wasStreamingRef.current
-    wasStreamingRef.current = streaming
-    scrollAiMessagesToBottom(el, force)
+
+    const updateShouldFollow = (): void => {
+      shouldFollowRef.current = isAiMessagesNearBottom(el)
+    }
+
+    updateShouldFollow()
+    el.addEventListener('scroll', updateShouldFollow, { passive: true })
+    return () => el.removeEventListener('scroll', updateShouldFollow)
+  }, [scrollRef])
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    scrollAiMessagesToBottom(el, () => shouldFollowRef.current)
   }, [messages, scrollRef])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!expanded) return
     const el = scrollRef.current
     if (el) scrollAiMessagesToBottom(el, true)

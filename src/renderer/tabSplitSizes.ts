@@ -4,7 +4,7 @@ export type { TabSplitSizes }
 
 export const DEFAULT_COLUMN_RATIO = 0.5
 export const DEFAULT_ROW_RATIO = 0.5
-export const SPLIT_GUTTER_PX = 6
+export const SPLIT_GUTTER_PX = 2
 export const MIN_PANE_WIDTH_PX = 120
 export const MIN_PANE_HEIGHT_PX = 80
 

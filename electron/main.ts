@@ -76,6 +76,8 @@ import {
   stopFileExplorerWatch,
 } from './fileExplorerWatcher'
 import { readCdRecentFolders } from './cdRecentMd'
+
+const APP_DISPLAY_NAME = 'AI Terminal'
 import {
   clearPersistedSessionCwd,
   clearSessionCdState,
@@ -235,6 +237,29 @@ function resolveOptionalWindowIcon(): string | undefined {
     /* ignore */
   }
   return undefined
+}
+
+function resolvePackagedMacIcon(): string | undefined {
+  if (process.platform !== 'darwin') return undefined
+  const icns = join(process.resourcesPath, 'icon.icns')
+  try {
+    if (existsSync(icns)) return icns
+  } catch {
+    /* ignore */
+  }
+  return undefined
+}
+
+function applyAppBranding(): void {
+  app.setName(APP_DISPLAY_NAME)
+  if (process.platform !== 'darwin') return
+  const icon = resolvePackagedMacIcon() ?? resolveOptionalWindowIcon()
+  if (!icon) return
+  try {
+    app.dock.setIcon(icon)
+  } catch {
+    /* ignore */
+  }
 }
 
 function registerIpc(): void {
@@ -766,6 +791,7 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  applyAppBranding()
   registerIpc()
   createWindow()
 

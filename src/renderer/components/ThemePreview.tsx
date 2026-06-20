@@ -1,5 +1,5 @@
 import React from 'react'
-import type { AppTheme } from '@themes/presets'
+import { getThemeChromeProfile, type AppTheme } from '@themes/presets'
 
 interface ThemePreviewProps {
   theme: AppTheme
@@ -18,6 +18,7 @@ export const ThemePreview: React.FC<ThemePreviewProps> = ({ theme, currentThemeI
   const tabActive = v['--tab-active-bg'] ?? bg
   const tabInactive = v['--tab-inactive-bg'] ?? surface
   const active = theme.id === currentThemeId
+  const chrome = getThemeChromeProfile(theme)
 
   const tpVars = {
     '--tp-bg': bg,
@@ -39,6 +40,7 @@ export const ThemePreview: React.FC<ThemePreviewProps> = ({ theme, currentThemeI
   return (
     <div
       className="theme-picker-preview theme-picker-preview--terminal-app"
+      data-tab-shape={chrome.tabShape}
       style={tpVars}
     >
       <div className="theme-picker-tp-shell" aria-hidden="true">

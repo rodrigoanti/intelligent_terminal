@@ -63,6 +63,44 @@ export const TabItem: React.FC<TabItemProps> = ({
     }
   }, [isActive, isEditing])
 
+  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const distances = {
+      left: x,
+      right: rect.width - x,
+      top: y,
+      bottom: rect.height - y,
+    }
+    const side = (Object.entries(distances).sort((a, b) => a[1] - b[1])[0]?.[0] ?? 'left') as
+      | 'left'
+      | 'right'
+      | 'top'
+      | 'bottom'
+    const style = e.currentTarget.style
+
+    if (side === 'left') {
+      style.setProperty('--tab-fill-bg-position', 'left top')
+      style.setProperty('--tab-fill-bg-size', '0% 100%')
+      style.setProperty('--tab-fill-bg-hover-size', '100% 100%')
+      style.setProperty('--tab-fill-border-origin', 'left center')
+      return
+    }
+    if (side === 'right') {
+      style.setProperty('--tab-fill-bg-position', 'right top')
+      style.setProperty('--tab-fill-bg-size', '0% 100%')
+      style.setProperty('--tab-fill-bg-hover-size', '100% 100%')
+      style.setProperty('--tab-fill-border-origin', 'right center')
+      return
+    }
+
+    style.setProperty('--tab-fill-bg-position', side === 'top' ? 'left top' : 'left bottom')
+    style.setProperty('--tab-fill-bg-size', '100% 0%')
+    style.setProperty('--tab-fill-bg-hover-size', '100% 100%')
+    style.setProperty('--tab-fill-border-origin', x < rect.width / 2 ? 'left center' : 'right center')
+  }, [])
+
   return (
     <div
       className={[
@@ -78,10 +116,11 @@ export const TabItem: React.FC<TabItemProps> = ({
       onDragEnd={onDragEnd}
       onDragLeave={onDragLeave}
       onClick={() => { if (!isEditing) onSelect() }}
+      onMouseEnter={handleMouseEnter}
       title={isEditing ? undefined : tab.title}
     >
       {isBusy ? (
-        <Spinner aria-label={t('tabs.spinnerAriaLabel')} />
+        <Spinner variant="tab" aria-label={t('tabs.spinnerAriaLabel')} />
       ) : (
         <span className="tab-icon" aria-hidden="true">
           <Icon name="terminal" size={10} />

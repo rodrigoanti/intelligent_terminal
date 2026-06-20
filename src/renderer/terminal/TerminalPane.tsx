@@ -20,29 +20,9 @@ import {
 } from '@renderer/terminal/terminalFindInBuffer'
 import { PaneToolbar } from './PaneToolbar'
 import {
-  clearFollowDetached,
-  createPtyWriteBatcher,
-  followTerminalOutput,
-  shouldStickTerminalToBottom,
-  type TerminalFollowState,
-  updateFollowDetachedState,
-  writePtyDataWithFollowScroll,
-} from './terminalFollowScroll'
-import {
-  createTerminalFitScheduler,
-  fitTerminalPreserveScroll,
-} from './terminalFitScheduler'
-import {
   createTerminalRepaintScheduler,
   repaintTerminalCanvas,
-  repaintTerminalCanvasForFollowState,
 } from './terminalCanvasRepaint'
-import {
-  handleForwardedTerminalWheel,
-  isTerminalScrolledUp,
-  reconcileTerminalScrollIfDomAtBottom,
-  snapTerminalToBottomIfNear,
-} from './terminalWheelScroll'
 import { CdSuggest } from './CdSuggest'
 import { CmdSuggest } from './CmdSuggest'
 import { TerminalScrollDown } from './TerminalScrollDown'
@@ -274,6 +254,232 @@ function getScrollback(term: Terminal, maxLines: number): string {
   return lines.join('\n')
 }
 
+function isTerminalScrolledUp(term: Terminal): boolean {
+  try {
+    const buf = term.buffer.active
+    return buf.type === 'normal' && buf.viewportY < buf.baseY
+  } catch {
+    return false
+  }
+}
+
+function syncTerminalScrolledUpState(
+  term: Terminal | null | undefined,
+  setIsScrolledUp: React.Dispatch<React.SetStateAction<boolean>>,
+): void {
+  setIsScrolledUp(term ? isTerminalScrolledUp(term) : false)
+}
+
+function fitTerminal(term: Terminal, fit: FitAddon): void {
+  try {
+    const before = term.buffer.active
+    const wasAtBottom = !isTerminalScrolledUp(term)
+    // Si el usuario está leyendo historial, preservamos una posición aproximada
+    // manteniendo la distancia al final del scrollback. Con resize/reflow no hay
+    // identidad estable de línea, pero esto evita saltos bruscos hacia arriba/abajo.
+    const distanceFromBottom = Math.max(0, before.baseY - before.viewportY)
+
+    fit.fit()
+
+    if (wasAtBottom) {
+      // Si seguía el stream, un resize/fit (dock IA, tabs, font-size, split pane)
+      // no debe dejar el viewport “un poco arriba”, porque desde ahí xterm deja
+      // de auto-seguir las escrituras siguientes.
+      term.scrollToBottom()
+    } else {
+      const after = term.buffer.active
+      term.scrollToLine(Math.max(0, after.baseY - distanceFromBottom))
+    }
+    repaintTerminalCanvas(term)
+  } catch {
+    /* dimensions / dispose */
+  }
+}
+
+interface BasicTerminalFitScheduler {
+  schedule: () => void
+  cancel: () => void
+  runNow: () => void
+}
+
+const FIT_BURST_COALESCE_MS = 100
+
+function createBasicTerminalFitScheduler(
+  getTerm: () => Terminal | null,
+  getFit: () => FitAddon | null,
+  getContainer: () => HTMLElement | null,
+  onDimensionsChange: (cols: number, rows: number) => void,
+  onAfterFit?: () => void,
+): BasicTerminalFitScheduler {
+  let raf = 0
+  let burstTimer: ReturnType<typeof setTimeout> | null = null
+  let lastFitAt = 0
+  let lastCols = -1
+  let lastRows = -1
+  let lastContainerW = -1
+  let lastContainerH = -1
+
+  const runFit = (): void => {
+    raf = 0
+    lastFitAt = Date.now()
+    const term = getTerm()
+    const fit = getFit()
+    if (!term || !fit) return
+    const host = getContainer()
+    if (host) {
+      const w = host.clientWidth
+      const h = host.clientHeight
+      if (
+        w === lastContainerW &&
+        h === lastContainerH &&
+        term.cols === lastCols &&
+        term.rows === lastRows
+      ) {
+        return
+      }
+      lastContainerW = w
+      lastContainerH = h
+    }
+    try {
+      const colsBefore = term.cols
+      const rowsBefore = term.rows
+      fitTerminal(term, fit)
+      onAfterFit?.()
+      const cols = Math.max(1, term.cols)
+      const rows = Math.max(1, term.rows)
+      if (
+        cols === lastCols &&
+        rows === lastRows &&
+        cols === colsBefore &&
+        rows === rowsBefore
+      ) {
+        return
+      }
+      lastCols = cols
+      lastRows = rows
+      onDimensionsChange(cols, rows)
+    } catch {
+      /* dimensions / dispose */
+    }
+  }
+
+  const cancelPending = (): void => {
+    if (burstTimer != null) {
+      clearTimeout(burstTimer)
+      burstTimer = null
+    }
+    if (raf !== 0) {
+      cancelAnimationFrame(raf)
+      raf = 0
+    }
+  }
+
+  return {
+    schedule: () => {
+      if (raf !== 0 || burstTimer != null) return
+      const elapsed = Date.now() - lastFitAt
+      if (elapsed >= FIT_BURST_COALESCE_MS) {
+        raf = requestAnimationFrame(runFit)
+        return
+      }
+      burstTimer = setTimeout(() => {
+        burstTimer = null
+        raf = requestAnimationFrame(runFit)
+      }, FIT_BURST_COALESCE_MS - elapsed)
+    },
+    cancel: cancelPending,
+    runNow: () => {
+      cancelPending()
+      runFit()
+    },
+  }
+}
+
+interface PlainPtyWriteBatcher {
+  write: (data: string, afterParsed?: () => void) => void
+  dispose: () => void
+}
+
+function createPlainPtyWriteBatcher(
+  getTerm: () => Terminal | null,
+  getUserScrollEpoch: () => number = () => 0,
+): PlainPtyWriteBatcher {
+  let pending = ''
+  const afterParsedCbs: Array<() => void> = []
+  let raf = 0
+  let followOutput = true
+  let lastUserScrollEpoch = getUserScrollEpoch()
+
+  const flush = (): void => {
+    raf = 0
+    const term = getTerm()
+    const chunk = pending
+    pending = ''
+    const cbs = afterParsedCbs.splice(0)
+    if (!term || !chunk) {
+      for (const cb of cbs) {
+        try { cb() } catch { /* ignore */ }
+      }
+      return
+    }
+    const followEpoch = getUserScrollEpoch()
+    // Importante: durante streams grandes (npm run build, vite/tsc) xterm puede
+    // quedar temporalmente con viewportY < baseY mientras escrituras anteriores
+    // siguen encoladas. Si recalculamos “está scrolleado” desde ese estado
+    // transitorio, perdemos el autoseguimiento para todos los batches siguientes.
+    // Por eso solo consideramos que el usuario abandonó el final cuando cambia
+    // explícitamente el epoch de scroll manual.
+    const shouldFollowOutput = followEpoch === lastUserScrollEpoch
+      ? followOutput || !isTerminalScrolledUp(term)
+      : !isTerminalScrolledUp(term)
+    lastUserScrollEpoch = followEpoch
+    followOutput = shouldFollowOutput
+    try {
+      if (shouldFollowOutput) {
+        // Restaurar el fondo antes de parsear el chunk re-activa el autoscroll
+        // interno de xterm para el propio write, no solo al final del callback.
+        try { term.scrollToBottom() } catch { /* dispose / dimensions */ }
+      }
+      term.write(chunk, () => {
+        if (shouldFollowOutput && getUserScrollEpoch() === followEpoch) {
+          try { term.scrollToBottom() } catch { /* dispose / dimensions */ }
+          requestAnimationFrame(() => {
+            if (getTerm() !== term || getUserScrollEpoch() !== followEpoch) return
+            try { term.scrollToBottom() } catch { /* dispose / dimensions */ }
+          })
+        } else if (!isTerminalScrolledUp(term)) {
+          followOutput = true
+        }
+        for (const cb of cbs) {
+          try { cb() } catch { /* ignore */ }
+        }
+      })
+    } catch {
+      for (const cb of cbs) {
+        try { cb() } catch { /* ignore */ }
+      }
+    }
+  }
+
+  return {
+    write(data, afterParsed) {
+      if (!data) return
+      pending += data
+      if (afterParsed) afterParsedCbs.push(afterParsed)
+      if (raf !== 0) return
+      raf = requestAnimationFrame(flush)
+    },
+    dispose() {
+      if (raf !== 0) {
+        cancelAnimationFrame(raf)
+        raf = 0
+      }
+      pending = ''
+      afterParsedCbs.length = 0
+    },
+  }
+}
+
 export interface TerminalRef {
   getSelection: () => string
   writeToTty: (data: string) => void
@@ -363,7 +569,6 @@ export const TerminalPane: React.FC<Props> = ({
   const userLineDraftRef = useRef('')
   const absorbUserInputRef = useRef<(raw: string) => void>(() => {})
   const ptyInjectRef = useRef<(raw: string) => void>(() => {})
-  const followStateRef = useRef<TerminalFollowState>({ userDetached: false })
   const scrollbackSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const busySilenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isBusyRef = useRef(false)
@@ -673,12 +878,17 @@ export const TerminalPane: React.FC<Props> = ({
 
   const scrollTerminalToBottom = useCallback((): void => {
     onRequestPaneFocusRef.current?.()
-    setIsScrolledUp(false)
     const term = termRef.current
     if (term) {
-      clearFollowDetached(followStateRef.current)
-      followTerminalOutput(term)
+      try {
+        term.scrollToBottom()
+      } catch {
+        /* dispose / dimensions */
+      }
       repaintTerminalCanvas(term)
+      syncTerminalScrolledUpState(term, setIsScrolledUp)
+    } else {
+      setIsScrolledUp(false)
     }
     termRef.current?.focus()
   }, [])
@@ -704,7 +914,6 @@ export const TerminalPane: React.FC<Props> = ({
     let termAlive = true
 
     userLineDraftRef.current = ''
-    followStateRef.current.userDetached = false
 
     // Use configRef.current to get the LATEST config at mount time (avoids
     // creating the terminal with CONFIG_DEFAULTS before getConfig() resolves)
@@ -736,14 +945,31 @@ export const TerminalPane: React.FC<Props> = ({
     fitRef.current = fit
     serializeAddonRef.current = serialize
 
-    const fitScheduler = createTerminalFitScheduler(
+    const syncScrollDownBtnVisibility = (): void => {
+      if (!termAlive || termRef.current !== term) return
+      syncTerminalScrolledUpState(term, setIsScrolledUp)
+    }
+
+    const terminalRepaint = createTerminalRepaintScheduler(
+      () => (termAlive && termRef.current === term ? term : null),
+    )
+    const scheduleTerminalCanvasRepaint = (): void => {
+      if (!termAlive || termRef.current !== term) return
+      terminalRepaint.scheduleAfterWrite()
+    }
+    const scheduleTerminalCanvasRepaintImmediate = (): void => {
+      if (!termAlive || termRef.current !== term) return
+      terminalRepaint.schedule()
+    }
+
+    const fitScheduler = createBasicTerminalFitScheduler(
       () => (termAlive && termRef.current === term ? term : null),
       () => (termAlive && termRef.current === term ? fit : null),
       () => containerRef.current,
-      followStateRef.current,
       (cols, rows) => {
         window.api.ptyResize(sessionId, cols, rows)
       },
+      syncScrollDownBtnVisibility,
     )
     refitTerminalRef.current = () => {
       fitScheduler.runNow()
@@ -754,89 +980,26 @@ export const TerminalPane: React.FC<Props> = ({
     }
     fitScheduler.runNow()
 
-    let lastScrolledUp = false
-    /** Evita parpadeo del botón ↓ durante streaming (lag de 1–2 frames). */
-    let scrolledUpFrames = 0
-    const SCROLLED_UP_SHOW_FRAMES = 4
-    const syncScrollDownBtnVisibility = (): void => {
-      if (!termAlive || termRef.current !== term) return
-      if (isTerminalScrolledUp(term)) {
-        scrolledUpFrames++
-      } else {
-        scrolledUpFrames = 0
-      }
-      const next = scrolledUpFrames >= SCROLLED_UP_SHOW_FRAMES
-      if (next === lastScrolledUp) return
-      lastScrolledUp = next
-      setIsScrolledUp(next)
-    }
+    const dScroll = term.onScroll(syncScrollDownBtnVisibility)
 
-    /** Un sync por frame: evita doble reconcile cuando onScroll y viewport scroll coinciden. */
-    let scrollSyncRaf = 0
-    const runScrollSync = (): void => {
-      scrollSyncRaf = 0
-      if (!termAlive || termRef.current !== term) return
-      const autoFollowing = shouldStickTerminalToBottom(term, followStateRef.current)
-      if (!autoFollowing) {
-        updateFollowDetachedState(term, followStateRef.current)
-      }
-      reconcileTerminalScrollIfDomAtBottom(term, followStateRef.current)
-      syncScrollDownBtnVisibility()
-    }
-    const scheduleScrollSync = (): void => {
-      if (scrollSyncRaf !== 0) return
-      scrollSyncRaf = requestAnimationFrame(runScrollSync)
-    }
-
-    const dScroll = term.onScroll(scheduleScrollSync)
-
-    const viewportEl = containerRef.current?.querySelector('.xterm-viewport') as HTMLElement | null
-    const onViewportScroll = (): void => { scheduleScrollSync() }
-    viewportEl?.addEventListener('scroll', onViewportScroll, { passive: true })
-
-    const xtermEl = containerRef.current?.querySelector('.xterm') as HTMLElement | null
-    const onXtermWheelAfter = (ev: WheelEvent): void => {
-      if (!termAlive || termRef.current !== term) return
-      queueMicrotask(() => {
-        if (!termAlive || termRef.current !== term) return
-        // xterm ya movió buffer + DOM; no llamar syncScrollArea (revierte la rueda).
-        snapTerminalToBottomIfNear(term, ev)
-        scheduleScrollSync()
-      })
-    }
-    xtermEl?.addEventListener('wheel', onXtermWheelAfter, { passive: true })
-
-    const onPaneWheelCapture = (ev: WheelEvent): void => {
-      if (!termAlive || termRef.current !== term) return
-      handleForwardedTerminalWheel(term, ev, followStateRef.current, syncScrollDownBtnVisibility)
-    }
-    const paneRoot = paneRootRef.current
-    paneRoot?.addEventListener('wheel', onPaneWheelCapture, { passive: false, capture: true })
-
-    const terminalRepaint = createTerminalRepaintScheduler(
-      () => (termAlive && termRef.current === term ? term : null),
-      () => followStateRef.current,
-    )
-    const scheduleTerminalCanvasRepaint = (): void => {
-      if (!termAlive || termRef.current !== term) return
-      terminalRepaint.scheduleAfterWrite()
-    }
-    const scheduleTerminalCanvasRepaintImmediate = (): void => {
-      if (!termAlive || termRef.current !== term) return
-      terminalRepaint.schedule()
-    }
     let scrollbackHydrated = false
     const ptyDataBuffer: string[] = []
 
     const flushPtyDataBuffer = (): void => {
       if (!termAlive || termRef.current !== term || ptyDataBuffer.length === 0) return
       const pending = ptyDataBuffer.splice(0, ptyDataBuffer.length).join('')
-      writePtyDataWithFollowScroll(
-        term,
-        pending,
-        followStateRef.current,
-        scheduleTerminalCanvasRepaint,
-      )
+      const shouldFollowOutput = !isTerminalScrolledUp(term)
+      try {
+        term.write(pending, () => {
+          if (shouldFollowOutput) {
+            try { term.scrollToBottom() } catch { /* dispose / dimensions */ }
+          }
+          scheduleTerminalCanvasRepaint()
+          syncScrollDownBtnVisibility()
+        })
+      } catch {
+        /* dispose / dimensions */
+      }
     }
 
     const markScrollbackHydrated = (): void => {
@@ -853,9 +1016,9 @@ export const TerminalPane: React.FC<Props> = ({
       }
       term.write(saved, () => {
         if (!termAlive) return
-        clearFollowDetached(followStateRef.current)
-        followTerminalOutput(term)
+        try { term.scrollToBottom() } catch { /* dispose / dimensions */ }
         scheduleTerminalCanvasRepaintImmediate()
+        syncScrollDownBtnVisibility()
         markScrollbackHydrated()
       })
     }
@@ -882,8 +1045,8 @@ export const TerminalPane: React.FC<Props> = ({
       if (!termAlive || termRef.current !== term) return
       try {
         term.clear()
-        clearFollowDetached(followStateRef.current)
         scheduleTerminalCanvasRepaintImmediate()
+        syncScrollDownBtnVisibility()
         if (scrollbackSaveTimerRef.current) {
           clearTimeout(scrollbackSaveTimerRef.current)
           scrollbackSaveTimerRef.current = null
@@ -972,10 +1135,34 @@ export const TerminalPane: React.FC<Props> = ({
       scheduleTerminalCanvasRepaint()
     }
 
+    const scrollTerminalViewportToBottom = (): void => {
+      if (!termAlive || termRef.current !== term) return
+      try {
+        term.scrollToBottom()
+      } catch {
+        /* dispose / dimensions */
+      }
+      scheduleTerminalCanvasRepaintImmediate()
+      syncScrollDownBtnVisibility()
+    }
+
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type !== 'keydown') return true
 
       const isBackspace = e.key === 'Backspace' || e.code === 'Backspace'
+      const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter'
+      const isPlainBackspace = isBackspace && !e.ctrlKey && !e.altKey && !e.metaKey
+      const isCtrlBackspace = isBackspace && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
+      const isPlainEnter = isEnter && !e.ctrlKey && !e.altKey && !e.metaKey
+      const isScrollUpKey =
+        e.key === 'PageUp' ||
+        e.code === 'PageUp' ||
+        e.key === 'Home' ||
+        e.code === 'Home'
+      if (isScrollUpKey) userScrollEpoch += 1
+      if (isPlainEnter || isPlainBackspace || isCtrlBackspace) {
+        scrollTerminalViewportToBottom()
+      }
       /*
        * macOS / xterm.js:
        * - Ctrl+Backspace → \b (solo mueve el cursor, no borra)
@@ -1050,9 +1237,23 @@ export const TerminalPane: React.FC<Props> = ({
     })
     if (containerRef.current) resizeObs.observe(containerRef.current)
 
-    const ptyWriteBatcher = createPtyWriteBatcher(
+    // Marca scroll manual hacia arriba para que un callback pendiente de term.write
+    // no reactive el follow si el usuario empezó a leer historial durante el stream.
+    let userScrollEpoch = 0
+    const terminalHost = containerRef.current
+    const markUserScrollUpIntent = (ev: WheelEvent): void => {
+      if (ev.deltaY < 0) userScrollEpoch += 1
+    }
+    const markViewportPointerScrollIntent = (ev: MouseEvent): void => {
+      const target = ev.target as HTMLElement | null
+      if (target?.closest('.xterm-viewport')) userScrollEpoch += 1
+    }
+    terminalHost?.addEventListener('wheel', markUserScrollUpIntent, { passive: true })
+    terminalHost?.addEventListener('mousedown', markViewportPointerScrollIntent, { passive: true })
+
+    const ptyWriteBatcher = createPlainPtyWriteBatcher(
       () => (termAlive && termRef.current === term ? term : null),
-      followStateRef.current,
+      () => userScrollEpoch,
     )
 
     // Suscribirse ANTES de ptyCreate: la salida inicial del shell no se pierde por carrera IPC.
@@ -1116,13 +1317,6 @@ export const TerminalPane: React.FC<Props> = ({
     return () => {
       termAlive = false
       ptyWriteBatcher.dispose()
-      viewportEl?.removeEventListener('scroll', onViewportScroll)
-      xtermEl?.removeEventListener('wheel', onXtermWheelAfter)
-      paneRoot?.removeEventListener('wheel', onPaneWheelCapture, { capture: true })
-      if (scrollSyncRaf !== 0) {
-        cancelAnimationFrame(scrollSyncRaf)
-        scrollSyncRaf = 0
-      }
       terminalRepaint.cancel()
       absorbUserInputRef.current = () => {}
       ptyInjectRef.current = () => {}
@@ -1143,6 +1337,8 @@ export const TerminalPane: React.FC<Props> = ({
       setIsScrolledUp(false)
       fitScheduler.cancel()
       resizeObs.disconnect()
+      terminalHost?.removeEventListener('wheel', markUserScrollUpIntent)
+      terminalHost?.removeEventListener('mousedown', markViewportPointerScrollIntent)
       unsubData(); unsubExit(); unsubErr()
       dScroll.dispose()
       // Guardar scrollback final antes de desmontar
@@ -1185,7 +1381,8 @@ export const TerminalPane: React.FC<Props> = ({
     const fit = fitRef.current
     if (term && fit) {
       term.options.fontSize = config.fontSize
-      fitTerminalPreserveScroll(term, fit, followStateRef.current)
+      fitTerminal(term, fit)
+      syncTerminalScrolledUpState(term, setIsScrolledUp)
       window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
     }
   }, [config.fontSize, sessionId])
@@ -1195,16 +1392,14 @@ export const TerminalPane: React.FC<Props> = ({
       setTimeout(() => {
         const term = termRef.current!
         const fit = fitRef.current!
-        clearFollowDetached(followStateRef.current)
-        setIsScrolledUp(false)
-        fitTerminalPreserveScroll(term, fit, followStateRef.current)
+        fitTerminal(term, fit)
+        syncTerminalScrolledUpState(term, setIsScrolledUp)
         window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
-        followTerminalOutput(term)
         // Tab con display:none no compone el canvas; segundo frame tras volver visible (Electron).
         requestAnimationFrame(() => {
           const t = termRef.current
           if (!t || t !== term || t.rows < 1) return
-          repaintTerminalCanvasForFollowState(t, followStateRef.current)
+          repaintTerminalCanvas(t)
         })
         term.focus()
       }, 10)
@@ -1216,7 +1411,8 @@ export const TerminalPane: React.FC<Props> = ({
     const t = setTimeout(() => {
       const term = termRef.current!
       const fit = fitRef.current!
-      fitTerminalPreserveScroll(term, fit, followStateRef.current)
+      fitTerminal(term, fit)
+      syncTerminalScrolledUpState(term, setIsScrolledUp)
       window.api.ptyResize(sessionId, Math.max(1, term.cols), Math.max(1, term.rows))
     }, 60)
     return () => clearTimeout(t)

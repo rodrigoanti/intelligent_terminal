@@ -1,3 +1,7 @@
+.toggle__tooltip-anchor {
+  display: inline-flex;
+}
+
 .toggle {
   display: inline-flex;
   align-items: center;
@@ -51,10 +55,24 @@
   transition: left 0.08s ease-out, right 0.08s ease-out, background 0.08s ease-out;
 }
 
+.toggle__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .toggle__label {
   text-transform: lowercase;
   letter-spacing: 0.04em;
   font-weight: 500;
+}
+
+.toggle--compact {
+  gap: 5px;
+  padding-right: 3px;
 }
 
 /* ── On state ─────────────────────────────────────── */

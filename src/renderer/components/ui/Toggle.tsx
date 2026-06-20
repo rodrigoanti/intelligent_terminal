@@ -1,10 +1,13 @@
 import React from 'react'
+import { Tooltip } from './Tooltip'
 import './Toggle.css'
 
 export interface ToggleProps {
   checked: boolean
   onChange: (checked: boolean) => void
   label: string
+  icon?: React.ReactNode
+  compact?: boolean
   disabled?: boolean
   title?: string
   tabIndex?: number
@@ -16,30 +19,37 @@ export const Toggle: React.FC<ToggleProps> = ({
   checked,
   onChange,
   label,
+  icon,
+  compact,
   disabled,
   title,
   tabIndex,
   onKeyDown,
   onClick,
-}) => (
-  <button
-    type="button"
-    role="switch"
-    aria-checked={checked}
-    aria-label={label}
-    disabled={disabled}
-    title={title}
-    tabIndex={tabIndex}
-    className={`toggle${checked ? ' toggle--on' : ''}`}
-    onClick={e => {
-      onClick?.(e)
-      if (!e.defaultPrevented) onChange(!checked)
-    }}
-    onKeyDown={onKeyDown}
-  >
-    <span className="toggle__track" aria-hidden="true">
-      <span className="toggle__thumb" />
-    </span>
-    <span className="toggle__label">{label}</span>
-  </button>
-)
+}) => {
+  const button = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      tabIndex={tabIndex}
+      className={`toggle${checked ? ' toggle--on' : ''}${compact ? ' toggle--compact' : ''}`}
+      onClick={e => {
+        onClick?.(e)
+        if (!e.defaultPrevented) onChange(!checked)
+      }}
+      onKeyDown={onKeyDown}
+    >
+      <span className="toggle__track" aria-hidden="true">
+        <span className="toggle__thumb" />
+      </span>
+      {icon && <span className="toggle__icon" aria-hidden="true">{icon}</span>}
+      {!compact && <span className="toggle__label">{label}</span>}
+    </button>
+  )
+
+  if (!title) return button
+  return <Tooltip content={title} className="toggle__tooltip-anchor">{button}</Tooltip>
+}

@@ -4,7 +4,7 @@ import { useT } from '@i18n/useT'
 import { Toggle } from './ui/Toggle'
 import { Badge } from './ui/Badge'
 import { Icon } from './ui/Icon'
-import { Select } from './ui/Select'
+import { Tooltip } from './ui/Tooltip'
 
 interface AiPanelHeaderProps {
   config: AppConfig
@@ -55,20 +55,18 @@ export const AiPanelHeader: React.FC<AiPanelHeaderProps> = ({
       <div className="ai-panel-header-main">
         <div className="ai-panel-header-top">
           <AiPanelTitle modelName={config.defaultModel} panelTitle={t('ai.panelTitle')} />
-          {expanded && (
-            <AiPanelActions
-              config={config}
-              hasMessages={hasMessages}
-              loopActive={loopActive}
-              canConfigPatch={canConfigPatch}
-              onAgentToggle={onAgentToggle}
-              onLoopToggle={onLoopToggle}
-              onLoopStop={onLoopStop}
-              onThinkToggle={onThinkToggle}
-              onShellPolicyChange={onShellPolicyChange}
-              onDeleteHistory={onDeleteHistory}
-            />
-          )}
+          <AiPanelActions
+            config={config}
+            hasMessages={hasMessages}
+            loopActive={loopActive}
+            canConfigPatch={canConfigPatch}
+            onAgentToggle={onAgentToggle}
+            onLoopToggle={onLoopToggle}
+            onLoopStop={onLoopStop}
+            onThinkToggle={onThinkToggle}
+            onShellPolicyChange={onShellPolicyChange}
+            onDeleteHistory={onDeleteHistory}
+          />
         </div>
       </div>
     </div>
@@ -123,6 +121,8 @@ const AiPanelActions: React.FC<AiPanelActionsProps> = ({
           checked={agentOn}
           onChange={() => {}}
           label={t('ai.agentLabel')}
+          icon={<Icon name="bot" size={13} />}
+          compact
           disabled={!canConfigPatch}
           title={t('ai.agentTitle')}
           onClick={onAgentToggle}
@@ -133,37 +133,38 @@ const AiPanelActions: React.FC<AiPanelActionsProps> = ({
           checked={config.agentLoop === true}
           onChange={() => {}}
           label={t('ai.loopLabel')}
+          icon={<Icon name="repeat" size={13} />}
+          compact
           disabled={!canConfigPatch || !agentOn}
           title={t('ai.loopTitle')}
           onClick={onLoopToggle}
           onKeyDown={e => e.stopPropagation()}
         />
 
-        <div className="ai-panel-actions__shell">
-          <Select
-            size="sm"
-            aria-label={t('ai.shellPolicyAriaLabel')}
-            title={!agentOn ? t('ai.shellPolicyTitleOff') : t('ai.shellPolicyTitleOn')}
-            value={config.agentShellPolicy ?? 'off'}
-            disabled={!canConfigPatch || !agentOn}
-            onClick={e => e.stopPropagation()}
-            onMouseDown={e => e.stopPropagation()}
-            onKeyDown={e => e.stopPropagation()}
-            onChange={e => {
-              e.stopPropagation()
-              onShellPolicyChange(e.target.value as AgentShellPolicy)
-            }}
-          >
-            <option value="off">{t('ai.shellNo')}</option>
-            <option value="ask">{t('ai.shellAsk')}</option>
-            <option value="always">{t('ai.shellAlways')}</option>
-          </Select>
-        </div>
+        <ShellPolicyBadgeSelector
+          value={config.agentShellPolicy ?? 'off'}
+          disabled={!canConfigPatch || !agentOn}
+          ariaLabel={t('ai.shellPolicyAriaLabel')}
+          title={!agentOn ? t('ai.shellPolicyTitleOff') : t('ai.shellPolicyTitleOn')}
+          icons={{
+            off: <Icon name="shield-off" size={12} />,
+            ask: <Icon name="shield-question" size={12} />,
+            always: <Icon name="shield-check" size={12} />,
+          }}
+          labels={{
+            off: t('ai.shellShortOff'),
+            ask: t('ai.shellShortAsk'),
+            always: t('ai.shellShortAlways'),
+          }}
+          onChange={onShellPolicyChange}
+        />
 
         <Toggle
           checked={config.thinkingMode === true}
           onChange={() => {}}
           label={t('ai.thinkLabel')}
+          icon={<Icon name="brain" size={13} />}
+          compact
           disabled={!canConfigPatch}
           title={t('ai.thinkTitle')}
           onClick={onThinkToggle}
@@ -173,15 +174,16 @@ const AiPanelActions: React.FC<AiPanelActionsProps> = ({
 
       <div className="ai-panel-actions__group ai-panel-actions__group--end">
         {loopActive && (
-          <button
-            type="button"
-            className="ai-panel-loop-stop"
-            onClick={e => { e.stopPropagation(); onLoopStop(e) }}
-            title={t('ai.loopStopTitle')}
-          >
-            <span className="ai-panel-loop-stop__icon" aria-hidden="true">■</span>
-            <span>{t('ai.loopStop')}</span>
-          </button>
+          <Tooltip content={t('ai.loopStopTitle')}>
+            <button
+              type="button"
+              className="ai-panel-loop-stop"
+              onClick={e => { e.stopPropagation(); onLoopStop(e) }}
+              aria-label={t('ai.loopStop')}
+            >
+              <Icon name="stop" size={10} />
+            </button>
+          </Tooltip>
         )}
 
         {hasMessages && (
@@ -197,13 +199,68 @@ interface AiDeleteHistoryButtonProps {
   onClick: (e: React.MouseEvent) => void
 }
 
-const AiDeleteHistoryButton: React.FC<AiDeleteHistoryButtonProps> = ({ title, onClick }) => (
-  <button
-    type="button"
-    className="ai-panel-delete"
-    onClick={e => { e.stopPropagation(); onClick(e) }}
-    title={title}
+interface ShellPolicyBadgeSelectorProps {
+  value: AgentShellPolicy
+  disabled: boolean
+  ariaLabel: string
+  title: string
+  icons: Record<AgentShellPolicy, React.ReactNode>
+  labels: Record<AgentShellPolicy, string>
+  onChange: (policy: AgentShellPolicy) => void
+}
+
+const SHELL_POLICIES: AgentShellPolicy[] = ['off', 'ask', 'always']
+
+const ShellPolicyBadgeSelector: React.FC<ShellPolicyBadgeSelectorProps> = ({
+  value,
+  disabled,
+  ariaLabel,
+  title,
+  icons,
+  labels,
+  onChange,
+}) => (
+  <div
+    className={`ai-shell-policy-badges${disabled ? ' ai-shell-policy-badges--disabled' : ''}`}
+    role="radiogroup"
+    aria-label={ariaLabel}
+    onClick={e => e.stopPropagation()}
+    onMouseDown={e => e.stopPropagation()}
+    onKeyDown={e => e.stopPropagation()}
   >
-    <Icon name="trash" size={11} />
-  </button>
+    {SHELL_POLICIES.map(policy => {
+      const active = value === policy
+      return (
+        <Tooltip key={policy} content={`${title} — ${labels[policy]}`}>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-label={labels[policy]}
+            className={`ai-shell-policy-badge${active ? ' ai-shell-policy-badge--active' : ''}`}
+            disabled={disabled}
+            onClick={e => {
+              e.stopPropagation()
+              onChange(policy)
+            }}
+          >
+            {icons[policy]}
+          </button>
+        </Tooltip>
+      )
+    })}
+  </div>
+)
+
+const AiDeleteHistoryButton: React.FC<AiDeleteHistoryButtonProps> = ({ title, onClick }) => (
+  <Tooltip content={title}>
+    <button
+      type="button"
+      className="ai-panel-delete"
+      onClick={e => { e.stopPropagation(); onClick(e) }}
+      aria-label={title}
+    >
+      <Icon name="trash" size={11} />
+    </button>
+  </Tooltip>
 )
