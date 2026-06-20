@@ -3,6 +3,7 @@ import type { DragEvent } from 'react'
 import type { IconName } from '../components/ui/Icon'
 import { Icon } from '../components/ui/Icon'
 import { useT } from '@i18n/useT'
+import { PaneToolbarQuickOpen } from './PaneToolbarQuickOpen'
 
 export interface PaneToolbarProps {
   showReorderHandle: boolean
@@ -13,6 +14,10 @@ export interface PaneToolbarProps {
   folderLabel: string
   /** Ruta completa para tooltip. */
   folderTitle: string
+  quickOpenOpen: boolean
+  sessionId: string
+  onQuickOpenClose: () => void
+  onQuickOpenPick: (relPath: string) => void
   onDragHandleStart: (e: DragEvent) => void
   onDragHandleEnd: () => void
   onClosePane: () => void
@@ -34,66 +39,94 @@ export const PaneToolbar: React.FC<PaneToolbarProps> = ({
   explorerOpen,
   folderLabel,
   folderTitle,
+  quickOpenOpen,
+  sessionId,
+  onQuickOpenClose,
+  onQuickOpenPick,
   onOpenFolderInFinder,
   onPointerDown,
 }) => {
   const { t } = useT()
   return (
-    <div className="pane-toolbar" onMouseDown={onPointerDown}>
-      <div className="pane-toolbar__group pane-toolbar__group--start">
-        {showReorderHandle && (
-          <PaneReorderHandle
-            isGrabbed={isGrabbed}
-            reorderTitle={t('paneToolbar.reorderTitle')}
-            reorderAriaLabel={t('paneToolbar.reorderAriaLabel')}
-            onDragStart={onDragHandleStart}
-            onDragEnd={onDragHandleEnd}
-          />
-        )}
-        <PaneToolbarButton
-          icon="git-branch"
-          title={t('paneToolbar.gitTitle')}
-          aria-label={t('paneToolbar.gitAriaLabel')}
-          variant="git"
-          onPointerDown={onPointerDown}
-          onClick={onOpenGitPanel}
-        />
-        <PaneToolbarButton
-          icon="files"
-          title={t('paneToolbar.explorerTitle')}
-          aria-label={t('paneToolbar.explorerAriaLabel')}
-          variant="files"
-          active={explorerOpen}
-          onPointerDown={onPointerDown}
-          onClick={onToggleExplorer}
-        />
-        <PaneToolbarButton
-          icon="folder"
-          title={t('paneToolbar.finderTitle')}
-          aria-label={t('paneToolbar.finderAriaLabel')}
-          variant="folder"
-          onPointerDown={onPointerDown}
-          onClick={onOpenFolderInFinder}
-        />
-      </div>
-      <span
-        className="pane-toolbar__folder-label"
-        title={folderTitle}
-        aria-label={t('paneToolbar.currentFolderAriaLabel', { folder: folderLabel })}
+    <div
+      className={[
+        'pane-toolbar-host',
+        quickOpenOpen ? 'pane-toolbar-host--quick-open' : '',
+      ].filter(Boolean).join(' ')}
+    >
+      <div
+        className="pane-toolbar"
+        onMouseDown={e => {
+          if ((e.target as HTMLElement).closest('.pane-toolbar-quick-open')) return
+          onPointerDown(e)
+        }}
       >
-        {folderLabel}
-      </span>
-      {showClosePane && (
-        <div className="pane-toolbar__group pane-toolbar__group--end">
+        <div className="pane-toolbar__group pane-toolbar__group--start">
+          {showReorderHandle && (
+            <PaneReorderHandle
+              isGrabbed={isGrabbed}
+              reorderTitle={t('paneToolbar.reorderTitle')}
+              reorderAriaLabel={t('paneToolbar.reorderAriaLabel')}
+              onDragStart={onDragHandleStart}
+              onDragEnd={onDragHandleEnd}
+            />
+          )}
           <PaneToolbarButton
-            icon="close"
-            title={t('paneToolbar.closePaneTitle')}
-            aria-label={t('paneToolbar.closePaneAriaLabel')}
-            variant="close"
+            icon="git-branch"
+            title={t('paneToolbar.gitTitle')}
+            aria-label={t('paneToolbar.gitAriaLabel')}
+            variant="git"
             onPointerDown={onPointerDown}
-            onClick={onClosePane}
+            onClick={onOpenGitPanel}
+          />
+          <PaneToolbarButton
+            icon="files"
+            title={t('paneToolbar.explorerTitle')}
+            aria-label={t('paneToolbar.explorerAriaLabel')}
+            variant="files"
+            active={explorerOpen}
+            onPointerDown={onPointerDown}
+            onClick={onToggleExplorer}
+          />
+          <PaneToolbarButton
+            icon="folder"
+            title={t('paneToolbar.finderTitle')}
+            aria-label={t('paneToolbar.finderAriaLabel')}
+            variant="folder"
+            onPointerDown={onPointerDown}
+            onClick={onOpenFolderInFinder}
           />
         </div>
+        <div className="pane-toolbar__trail">
+          <span
+            className="pane-toolbar__folder-label"
+            title={folderTitle}
+            aria-label={t('paneToolbar.currentFolderAriaLabel', { folder: folderLabel })}
+          >
+            {folderLabel}
+          </span>
+        </div>
+        {showClosePane && (
+          <div className="pane-toolbar__group pane-toolbar__group--end">
+            <PaneToolbarButton
+              icon="close"
+              title={t('paneToolbar.closePaneTitle')}
+              aria-label={t('paneToolbar.closePaneAriaLabel')}
+              variant="close"
+              onPointerDown={onPointerDown}
+              onClick={onClosePane}
+            />
+          </div>
+        )}
+      </div>
+
+      {quickOpenOpen && (
+        <PaneToolbarQuickOpen
+          open={quickOpenOpen}
+          sessionId={sessionId}
+          onClose={onQuickOpenClose}
+          onPick={onQuickOpenPick}
+        />
       )}
     </div>
   )

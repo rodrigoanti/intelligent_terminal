@@ -636,6 +636,7 @@ export const TerminalPane: React.FC<Props> = ({
   const [findModalOpen, setFindModalOpen] = useState(false)
   const [findModalBuffer, setFindModalBuffer] = useState<TerminalBufferFindMatch[]>([])
   const [findModalHistory, setFindModalHistory] = useState<string[]>([])
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false)
   /** Foco en shell / barra del panel (no en chat IA); usado p. ej. para el botón de split. */
   const [shellOrToolbarFocused, setShellOrToolbarFocused] = useState(false)
 
@@ -1185,7 +1186,8 @@ export const TerminalPane: React.FC<Props> = ({
 
       const isFind = e.key === 'f' || e.key === 'F' || e.code === 'KeyF'
       const isGit = e.key === 'g' || e.key === 'G' || e.code === 'KeyG'
-      if (!isFind && !isGit) return true
+      const isQuickOpen = e.key === 'p' || e.key === 'P' || e.code === 'KeyP'
+      if (!isFind && !isGit && !isQuickOpen) return true
 
       e.preventDefault()
       e.stopPropagation()
@@ -1194,6 +1196,9 @@ export const TerminalPane: React.FC<Props> = ({
           setFindModalOpen(true)
           setFindModalBuffer([])
           setFindModalHistory([])
+        } else if (isQuickOpen) {
+          onRequestPaneFocusRef.current?.()
+          setQuickOpenOpen(prev => !prev)
         } else {
           onRequestPaneFocusRef.current?.()
           setGitPanelOpen(prev => !prev)
@@ -1495,6 +1500,27 @@ export const TerminalPane: React.FC<Props> = ({
     queueMicrotask(() => { termRef.current?.focus() })
   }, [])
 
+  const closeQuickOpen = useCallback(() => {
+    setQuickOpenOpen(false)
+    queueMicrotask(() => { termRef.current?.focus() })
+  }, [])
+
+  const handleQuickOpenPick = useCallback((relPath: string) => {
+    setQuickOpenOpen(false)
+    onRequestPaneFocusRef.current?.()
+    onFileExplorerChangeRef.current({
+      ...fileExplorerRef.current,
+      open: true,
+      selectedRelPath: relPath,
+      selectedIsDirectory: false,
+    })
+    queueMicrotask(() => {
+      requestAnimationFrame(() => {
+        explorerRef.current?.expandParents(relPath)
+      })
+    })
+  }, [])
+
   const onGoToFindBufferMatch = useCallback((m: TerminalBufferFindMatch) => {
     const term = termRef.current
     if (!term) return
@@ -1566,6 +1592,10 @@ export const TerminalPane: React.FC<Props> = ({
           explorerOpen={explorerOpen}
           folderLabel={sessionCwdPaneLabel(paneCwd)}
           folderTitle={paneCwd ? `Carpeta actual: ${paneCwd}` : 'Carpeta actual'}
+          quickOpenOpen={quickOpenOpen}
+          sessionId={sessionId}
+          onQuickOpenClose={closeQuickOpen}
+          onQuickOpenPick={handleQuickOpenPick}
           onToggleExplorer={toggleExplorer}
           onOpenFolderInFinder={() => {
             onRequestPaneFocusRef.current?.()

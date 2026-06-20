@@ -55,18 +55,20 @@ export const AiPanelHeader: React.FC<AiPanelHeaderProps> = ({
       <div className="ai-panel-header-main">
         <div className="ai-panel-header-top">
           <AiPanelTitle modelName={config.defaultModel} panelTitle={t('ai.panelTitle')} />
-          <AiPanelActions
-            config={config}
-            hasMessages={hasMessages}
-            loopActive={loopActive}
-            canConfigPatch={canConfigPatch}
-            onAgentToggle={onAgentToggle}
-            onLoopToggle={onLoopToggle}
-            onLoopStop={onLoopStop}
-            onThinkToggle={onThinkToggle}
-            onShellPolicyChange={onShellPolicyChange}
-            onDeleteHistory={onDeleteHistory}
-          />
+          {expanded && (
+            <AiPanelActions
+              config={config}
+              hasMessages={hasMessages}
+              loopActive={loopActive}
+              canConfigPatch={canConfigPatch}
+              onAgentToggle={onAgentToggle}
+              onLoopToggle={onLoopToggle}
+              onLoopStop={onLoopStop}
+              onThinkToggle={onThinkToggle}
+              onShellPolicyChange={onShellPolicyChange}
+              onDeleteHistory={onDeleteHistory}
+            />
+          )}
         </div>
       </div>
     </div>

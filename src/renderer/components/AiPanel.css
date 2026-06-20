@@ -6,7 +6,7 @@
   --ai-panel-base: color-mix(in srgb, black 4%, var(--bg));
   --ai-edge: var(--border);
   --ai-pad-x: 8px;
-  --ai-pad-y: 0;
+  --ai-pad-y: 8px;
   --ai-bubble-r: var(--radius, 8px);
 
   /* Solo la cabecera y el cuerpo expandido capturan eventos; el resto deja pasar la rueda a xterm. */
@@ -26,6 +26,7 @@
    * este color sólido evita transparencias que fuercen compositing sobre el canvas xterm.
    */
   background-color: var(--ai-panel-base);
+  padding: 2px 0;
 }
 
 .ai-panel--dock-expanded {

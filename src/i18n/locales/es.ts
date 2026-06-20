@@ -235,6 +235,16 @@ const es = {
     closeAriaLabel: 'Cerrar',
   },
 
+  quickOpen: {
+    ariaLabel: 'Abrir archivo rápido',
+    inputAria: 'Buscar archivos',
+    placeholder: 'Buscar archivos…',
+    typeToSearch: 'Escribe para buscar archivos en la carpeta del proyecto.',
+    searching: 'Buscando…',
+    noMatches: 'Sin archivos coincidentes.',
+    truncated: 'Hay más resultados; afina la búsqueda.',
+  },
+
   find: {
     title: 'buscar en terminal',
     footerShortcut: '⌘F / Ctrl+F',

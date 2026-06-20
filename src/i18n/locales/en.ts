@@ -233,6 +233,16 @@ const en = {
     closeAriaLabel: 'Close',
   },
 
+  quickOpen: {
+    ariaLabel: 'Quick open file',
+    inputAria: 'Search files',
+    placeholder: 'Search files…',
+    typeToSearch: 'Type to search files in the project folder.',
+    searching: 'Searching…',
+    noMatches: 'No matching files.',
+    truncated: 'More results available; refine your search.',
+  },
+
   find: {
     title: 'find in terminal',
     footerShortcut: '⌘F / Ctrl+F',
